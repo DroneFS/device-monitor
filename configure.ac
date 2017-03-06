@@ -6,6 +6,7 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile tests/Makefile])
 AC_CONFIG_MACRO_DIR([m4])
 
+PKG_CHECK_MODULES([FUSE], [fuse])
 PKG_CHECK_MODULES([CHECK], [check >= 0.9.6])
 
 AC_PROG_CC
