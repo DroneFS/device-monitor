@@ -573,13 +573,13 @@ end:
  *
  * This function returns the number of bytes written from \p buf to the file.
  *
- * If the file was not open for writing () then `FSROOT_E_SYSCALL` is returned and \p error_out
- * will be set to `EBADF`. If an error happens in some of the underlying OS services, `FSROOT_E_SYSCALL`
- * is returned and \p error_out is set to the value of `errno`.
+ * If the file was not open for writing (neither `O_WRONLY` or `O_RDWR` were passed) then `FSROOT_E_SYSCALL`
+ * is returned and \p error_out will be set to `EBADF`. If an error happens in some of the underlying OS services,
+ * `FSROOT_E_SYSCALL` is returned and \p error_out is set to the value of `errno`.
  *
  * If an error happens, the file will not be modified in any way.
  */
-int fsroot_write(int fd, char *buf, size_t size, off_t offset, int *error_out)
+int fsroot_write(int fd, const char *buf, size_t size, off_t offset, int *error_out)
 {
 	int retval = FSROOT_OK, error;
 	unsigned int idx;

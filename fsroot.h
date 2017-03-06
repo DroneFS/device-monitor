@@ -25,7 +25,7 @@ void fsroot_deinit(void);
 int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out);
 int fsroot_open(const char *path, int flags);
 int fsroot_read(int fd, char *buf, size_t size, off_t offset, int *error_out);
-int fsroot_write(int fd, char *buf, size_t size, off_t offset, int *error_out);
+int fsroot_write(int fd, const char *buf, size_t size, off_t offset, int *error_out);
 int fsroot_sync(const char *path);
 int fsroot_release(const char *path);
 
