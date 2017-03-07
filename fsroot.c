@@ -703,7 +703,6 @@ int fsroot_sync(const char *path)
  */
 int fsroot_release(const char *path)
 {
-	int retval = FSROOT_OK;
 	struct fsroot_file *file;
 
 	if (!path)
@@ -718,12 +717,7 @@ int fsroot_release(const char *path)
 	else if (!file->flags.is_synced)
 		fsroot_sync_file(file);
 
-	retval = __fsroot_release(file, 1);
-	if (retval != FSROOT_OK)
-		goto end;
-
-end:
-	return retval;
+	return __fsroot_release(file, 1);
 }
 
 /**
