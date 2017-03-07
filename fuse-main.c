@@ -102,7 +102,6 @@ static void dm_fuse_destroy(void *v)
 static int dm_fuse_getattr(const char *path, struct stat *st)
 {
 	int retval = -EFAULT;
-	char fullpath[PATH_MAX];
 
 	if (!path || !st)
 		return -EFAULT;
@@ -152,7 +151,8 @@ static int dm_fuse_mknod(const char *path, mode_t mode, dev_t dev)
 	retval = fsroot_create(path, fctx->uid, fctx->gid, mode, 0, &err);
 
 	if (retval == FSROOT_OK) {
-		retval = 0;
+		retval = fsroot_release(path);
+//		retval = 0;
 		goto end;
 	}
 
@@ -484,6 +484,14 @@ end:
 	return retval;
 }
 
+static int dm_fuse_release(const char *path, struct fuse_file_info *fi)
+{
+	/* FUSE ignores the return value of this function, and so do we */
+	if (path)
+		fsroot_release(path);
+	return 0;
+}
+
 /*
  * Read data from an open file.
  * Should return exactly the number of bytes requested except on EOF or error,
@@ -679,6 +687,7 @@ int main(int argc, char **argv)
 		.chown		= dm_fuse_chown,
 //		.truncate	= dm_fuse_truncate,
 		.open		= dm_fuse_open,
+		.release	= dm_fuse_release,
 		.read		= dm_fuse_read,
 		.write		= dm_fuse_write,
 //		.opendir	= dm_fuse_opendir,
