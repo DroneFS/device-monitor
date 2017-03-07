@@ -32,6 +32,30 @@ START_TEST(test_fsroot_getattr)
 }
 END_TEST
 
+START_TEST(test_fsroot_getattr_with_trailing_slash)
+{
+	int retval, error = 0;
+	struct stat st;
+
+	retval = fsroot_init(dir);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
+			dir, retval);
+
+	retval = fsroot_create("/foo", 1000, 1000, 0100700, 0, &error);
+	ck_assert_msg(retval >= 0 && error == 0, "fsroot_create(\"foo\") returned %d (error: %d)\n",
+			retval, error);
+	retval = fsroot_getattr("/foo", &st);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"/foo\") returned %d\n", retval);
+	ck_assert_int_eq(st.st_uid, 1000);
+	ck_assert_int_eq(st.st_gid, 1000);
+	ck_assert_int_eq(st.st_mode, 0100700);
+	retval = fsroot_release("/foo");
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"/foo\") returned %d\n", retval);
+
+	fsroot_deinit();
+}
+END_TEST
+
 void empty_dir()
 {
 	DIR *d;
@@ -64,6 +88,7 @@ Suite *fsroot_suite()
 
 	tc = tcase_create("core");
 	tcase_add_test(tc, test_fsroot_getattr);
+	tcase_add_test(tc, test_fsroot_getattr_with_trailing_slash);
 	tcase_add_checked_fixture(tc, NULL, empty_dir);
 
 	suite_add_tcase(s, tc);
