@@ -34,11 +34,11 @@ struct fsroot_file {
 	mode_t mode;
 	uid_t uid;
 	gid_t gid;
-	off_t cur_offset;
 	struct {
 		int sync      : 1;
 		int tmpfile   : 1;
 		int is_synced : 1;
+		int delete    : 1;
 	} flags;
 	pthread_rwlock_t rwlock;
 	char *buf;
@@ -695,7 +695,9 @@ int fsroot_sync(const char *path)
  * undefined effects**.
  *
  * This function will sync the file to the underlying hardware media. If the file was marked
- * as temporary (`O_TMPFILE` was passed to fsroot_create() or fsroot_open()) the file is removed.
+ * as temporary (`O_TMPFILE` was passed to fsroot_create() or fsroot_open()), or fsroot_delete()
+ * was called on it and could not be removed because another process held a file descriptor for it,
+ * then the file is removed from disk.
  *
  * If the specified file does not exist this function returns `FSROOT_E_NOTEXISTS`.
  * If the file exists but there are no file descriptors associated with it this function
@@ -703,6 +705,8 @@ int fsroot_sync(const char *path)
  */
 int fsroot_release(const char *path)
 {
+	int retval;
+	char fullpath[PATH_MAX];
 	struct fsroot_file *file;
 
 	if (!path)
@@ -712,12 +716,101 @@ int fsroot_release(const char *path)
 	if (!file || !S_ISREG(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
-	if (file->flags.tmpfile)
-		unlink(path);
-	else if (!file->flags.is_synced)
+	if (!file->flags.is_synced)
 		fsroot_sync_file(file);
 
-	return __fsroot_release(file, 1);
+	retval = __fsroot_release(file, 1);
+
+	/* Finally delete the file from disk if it has to be deleted */
+	if (file->flags.tmpfile || file->flags.delete) {
+		if (fsroot_fullpath(path, fullpath, sizeof(fullpath))) {
+			if (unlink(fullpath) == 0) {
+				hash_table_remove(files, path);
+				mm_free(file);
+			} else {
+				retval = FSROOT_E_SYSCALL;
+			}
+		} else {
+			retval = FSROOT_E_BADARGS;
+		}
+	}
+
+	return retval;
+}
+
+/*
+ * \param[in] path Relative path to an existing file
+ * \return `FSROOT_OK` on success, or a negative integer on error
+ *
+ * Deletes a file from disk.
+ *
+ * The specified file must be a regular file. If a non-regular file is specified,
+ * or no such file exists, then this function returns `FSROOT_E_NOTEXISTS`.
+ *
+ * Other functions are provided to delete non-regular files. Use fsroot_symlink_delete()
+ * to delete a symbolic link, and fsroot_rmdir() to delete a directory.
+ *
+ * If the specified file is open (another process holds a file descriptor for it) fsroot_delete()
+ * will return `FSROOT_OK`, but the file will not be deleted at the moment. It will be deleted when
+ * the last open file descriptor for the file is closed.
+ *
+ * If the underlying call to `unlink(2)` fails, `FSROOT_E_SYSCALL` is returned.
+ */
+int fsroot_delete(const char *path)
+{
+	char fullpath[PATH_MAX];
+	int retval = FSROOT_OK, is_open = 0;
+	struct fsroot_file *file;
+
+	if (!path)
+		return FSROOT_E_BADARGS;
+
+	file = hash_table_get(files, path);
+	if (!file)
+		return FSROOT_E_NOTEXISTS;
+
+	/*
+	 * This is only for regular files.
+	 * Any attempt to delete a non-regular file
+	 * will be rejected.
+	 */
+	if (!S_ISREG(file->mode))
+		return FSROOT_E_NOTEXISTS;
+
+	/*
+	 * Walk over all the open file descriptors to see
+	 * if the file is open.
+	 */
+	pthread_rwlock_rdlock(&open_files.rwlock);
+	for (size_t i = 0; i < open_files.num_files; i++) {
+		if (open_files.file_descriptors[i]->file == file) {
+			is_open = 1;
+			break;
+		}
+	}
+	pthread_rwlock_unlock(&open_files.rwlock);
+
+	if (is_open) {
+		/*
+		 * Someone keeps the file open, so we cannot remove it.
+		 * We just mark it as "to be deleted".
+		 */
+		file->flags.delete = 1;
+	} else {
+		/* Compute the full path and delete the file on disk */
+		if (fsroot_fullpath(path, fullpath, sizeof(fullpath))) {
+			if (unlink(fullpath) == 0) {
+				hash_table_remove(files, path);
+				mm_free(file);
+			} else {
+				retval = FSROOT_E_SYSCALL;
+			}
+		} else {
+			retval = FSROOT_E_BADARGS;
+		}
+	}
+
+	return retval;
 }
 
 /**
@@ -817,6 +910,38 @@ int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gi
 	}
 
 	return retval;
+}
+
+/*
+ * \param[in] linkpath Relative path to the symbolic link
+ * \return `FSROOT_OK` on success or a negative value on error
+ * Deletes a symbolic link.
+ *
+ * If the specified file does not exist, or is not a symbolic link,
+ * `FSROOT_E_NOTEXISTS` is returned.
+ *
+ * If the underlying call to `unlink(2)` fails, `FSROOT_E_SYSCALL`
+ * is returned.
+ */
+int fsroot_symlink_delete(const char *linkpath)
+{
+	char full_linkpath[PATH_MAX];
+	struct fsroot_file *file;
+
+	if (!linkpath || !fsroot_fullpath(linkpath, full_linkpath, sizeof(full_linkpath)))
+		return FSROOT_E_BADARGS;
+
+	file = hash_table_get(files, linkpath);
+	if (!file || !S_ISLNK(file->mode))
+		return FSROOT_E_NOTEXISTS;
+
+	if (unlink(full_linkpath) == -1)
+		return FSROOT_E_SYSCALL;
+
+	hash_table_remove(files, linkpath);
+	mm_free(file);
+
+	return FSROOT_OK;
 }
 
 /**
