@@ -758,7 +758,6 @@ int fsroot_release(const char *path)
  */
 int fsroot_delete(const char *path)
 {
-	char fullpath[PATH_MAX];
 	int retval = FSROOT_OK, is_open = 0;
 	struct fsroot_file *file;
 
@@ -798,15 +797,11 @@ int fsroot_delete(const char *path)
 		file->flags.delete = 1;
 	} else {
 		/* Compute the full path and delete the file on disk */
-		if (fsroot_fullpath(path, fullpath, sizeof(fullpath))) {
-			if (unlink(fullpath) == 0) {
-				hash_table_remove(files, path);
-				mm_free(file);
-			} else {
-				retval = FSROOT_E_SYSCALL;
-			}
+		if (unlink(file->path) == 0) {
+			hash_table_remove(files, path);
+			mm_free(file);
 		} else {
-			retval = FSROOT_E_BADARGS;
+			retval = FSROOT_E_SYSCALL;
 		}
 	}
 
@@ -837,19 +832,17 @@ int fsroot_delete(const char *path)
  */
 int fsroot_getattr(const char *path, struct stat *out_st)
 {
-	char fullpath[PATH_MAX];
 	struct stat st;
 	struct fsroot_file *file;
 
-	if (!path || !out_st ||
-			!fsroot_fullpath(path, fullpath, sizeof(fullpath)))
+	if (!path || !out_st)
 		return FSROOT_E_BADARGS;
 
 	file = hash_table_get(files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
-	if (stat(fullpath, &st) == -1)
+	if (lstat(file->path, &st) == -1)
 		return FSROOT_E_SYSCALL;
 
 	st.st_mode = file->mode;
@@ -885,12 +878,9 @@ int fsroot_getattr(const char *path, struct stat *out_st)
  */
 int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gid, mode_t mode)
 {
-	char full_linkpath[PATH_MAX];
-	int retval = FSROOT_OK;
 	struct fsroot_file *file = NULL;
 
-	if (!linkpath || !target ||
-			!fsroot_fullpath(linkpath, full_linkpath, sizeof(full_linkpath)))
+	if (!linkpath || !target)
 		return FSROOT_E_BADARGS;
 	if (!S_ISLNK(mode)) /* This is not a symlink! */
 		return FSROOT_E_BADARGS;
@@ -898,18 +888,19 @@ int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gi
 	if (hash_table_contains(files, linkpath))
 		return FSROOT_E_EXISTS;
 
+	file = fsroot_create_file(linkpath, uid, gid, mode);
+	if (!file)
+		return FSROOT_E_BADARGS;
+
 	if (strlen(target) >= LONG_MAX)
 		return FSROOT_E_NOMEM;
-	if (symlink(target, full_linkpath) == -1)
-		retval = FSROOT_E_SYSCALL;
+	if (symlink(target, file->path) == -1)
+		return FSROOT_E_SYSCALL;
 
-	if (retval == FSROOT_OK) {
-		/* symlink was created successfully, so we register it in our hash table */
-		file = fsroot_create_file(linkpath, uid, gid, mode);
-		hash_table_put(files, linkpath, file);
-	}
+	/* At this point symlink was created successfully, so we register it in our hash table */
+	hash_table_put(files, linkpath, file);
 
-	return retval;
+	return FSROOT_OK;
 }
 
 /*
@@ -925,17 +916,16 @@ int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gi
  */
 int fsroot_symlink_delete(const char *linkpath)
 {
-	char full_linkpath[PATH_MAX];
 	struct fsroot_file *file;
 
-	if (!linkpath || !fsroot_fullpath(linkpath, full_linkpath, sizeof(full_linkpath)))
+	if (!linkpath)
 		return FSROOT_E_BADARGS;
 
 	file = hash_table_get(files, linkpath);
 	if (!file || !S_ISLNK(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
-	if (unlink(full_linkpath) == -1)
+	if (unlink(file->path) == -1)
 		return FSROOT_E_SYSCALL;
 
 	hash_table_remove(files, linkpath);
@@ -963,20 +953,18 @@ int fsroot_symlink_delete(const char *linkpath)
  */
 int fsroot_readlink(const char *linkpath, char *dst, size_t *dstlen)
 {
-	char full_linkpath[PATH_MAX];
 	struct stat st;
 	size_t required_size, actual_len;
 	struct fsroot_file *file;
 
-	if (!linkpath || !dst || !dstlen ||
-			!fsroot_fullpath(linkpath, full_linkpath, sizeof(full_linkpath)))
+	if (!linkpath || !dst || !dstlen)
 		return FSROOT_E_BADARGS;
 
 	file = hash_table_get(files, linkpath);
 	if (file == NULL || !S_ISLNK(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
-	if (lstat(full_linkpath, &st) == -1)
+	if (lstat(file->path, &st) == -1)
 		return FSROOT_E_SYSCALL;
 	if (st.st_size >= LONG_MAX)
 		return FSROOT_E_NOMEM;
@@ -987,7 +975,7 @@ int fsroot_readlink(const char *linkpath, char *dst, size_t *dstlen)
 		return FSROOT_E_NOMEM;
 	}
 
-	actual_len = readlink(full_linkpath, dst, *dstlen);
+	actual_len = readlink(file->path, dst, *dstlen);
 	if (actual_len == -1)
 		return FSROOT_E_SYSCALL;
 
@@ -1016,10 +1004,9 @@ int fsroot_readlink(const char *linkpath, char *dst, size_t *dstlen)
  */
 int fsroot_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode)
 {
-	char fullpath[PATH_MAX];
 	struct fsroot_file *file;
 
-	if (!path || !fsroot_fullpath(path, fullpath, sizeof(fullpath)))
+	if (!path)
 		return FSROOT_E_BADARGS;
 	if (!S_ISDIR(mode)) /* This is not a directory! */
 		return FSROOT_E_BADARGS;
@@ -1028,7 +1015,9 @@ int fsroot_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode)
 		return FSROOT_E_EXISTS;
 
 	file = fsroot_create_file(path, uid, gid, mode);
-	if (mkdir(fullpath, S_IFDIR | 0700) == -1)
+	if (!file)
+		return FSROOT_E_BADARGS;
+	if (mkdir(file->path, S_IFDIR | 0700) == -1)
 		goto error;
 
 	hash_table_put(files, path, file);
@@ -1053,18 +1042,17 @@ error:
  */
 int fsroot_rmdir(const char *path)
 {
-	char fullpath[PATH_MAX];
 	int retval = FSROOT_OK;
 	struct fsroot_file *file;
 
-	if (!path || !fsroot_fullpath(path, fullpath, sizeof(fullpath)))
+	if (!path)
 		return FSROOT_E_BADARGS;
 
 	file = hash_table_get(files, path);
 	if (file == NULL || !S_ISDIR(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
-	if (rmdir(fullpath) == -1)
+	if (rmdir(file->path) == -1)
 		retval = FSROOT_E_SYSCALL;
 
 	if (retval == FSROOT_OK) {
@@ -1091,12 +1079,9 @@ int fsroot_rmdir(const char *path)
 int fsroot_rename(const char *path, const char *newpath)
 {
 	struct fsroot_file *file;
-	int retval = FSROOT_OK;
-	char fullpath[PATH_MAX], full_newpath[PATH_MAX];
+	char full_newpath[PATH_MAX];
 
-	if (!path || !newpath ||
-			!fsroot_fullpath(path, fullpath, sizeof(fullpath)) ||
-			!fsroot_fullpath(newpath, full_newpath, sizeof(full_newpath)))
+	if (!path || !newpath || !fsroot_fullpath(newpath, full_newpath, sizeof(full_newpath)))
 		return FSROOT_E_BADARGS;
 
 	file = hash_table_get(files, path);
@@ -1106,13 +1091,15 @@ int fsroot_rename(const char *path, const char *newpath)
 	if (hash_table_contains(files, newpath))
 		return FSROOT_E_EXISTS;
 
-	if (rename(fullpath, full_newpath) == -1)
-		retval = FSROOT_E_SYSCALL;
+	if (rename(file->path, full_newpath) == -1)
+		return FSROOT_E_SYSCALL;
 
-	if (retval == FSROOT_OK) {
-		hash_table_put(files, newpath, file);
-		hash_table_remove(files, path);
-	}
+	/* TODO maybe these should should be performed atomically */
+	hash_table_remove(files, path);
+
+	file->path = mm_realloc((void *) file->path, strlen(full_newpath) + 1);
+	strcpy((char *) file->path, full_newpath);
+	hash_table_put(files, newpath, file);
 
 	return FSROOT_OK;
 }
@@ -1136,7 +1123,7 @@ int fsroot_rename(const char *path, const char *newpath)
 int fsroot_chmod(const char *path, mode_t mode)
 {
 	struct fsroot_file *file;
-	mode_t filetype = mode & 0170000;
+	mode_t filetype = mode & S_IFMT;
 
 	if (!path || !filetype)
 		return FSROOT_E_BADARGS;
