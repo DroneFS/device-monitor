@@ -1054,6 +1054,9 @@ int fsroot_rmdir(const char *path)
 
 	if (!path)
 		return FSROOT_E_BADARGS;
+	/* Obviously we loudly complain if someone tries to remove the root dir */
+	if (path[0] == '/' && path[1] == 0)
+		return FSROOT_E_BADARGS;
 
 	file = hash_table_get(files, path);
 	if (file == NULL || !S_ISDIR(file->mode))
@@ -1281,29 +1284,39 @@ void fsroot_deinit()
  * The length of the string \p root should be no greater than `PATH_MAX`, or
  * `FSROOT_E_NOMEM` is returned.
  */
-int fsroot_init(const char *root)
-{
+int fsroot_init(const char *root, uid_t root_uid, gid_t root_gid, mode_t root_mode) {
+	struct fsroot_file *root_dir = NULL;
+
 	files = NULL;
 	memset(&open_files, 0, sizeof(open_files));
-
 	if (!root)
 		return FSROOT_E_BADARGS;
 
 	/* TODO how do we balance the space? (eg. Android) */
 	files = make_string_hash_table(10);
 
+	/* Initialize the root directory */
+	if (!S_ISDIR(root_mode))
+		return FSROOT_E_BADARGS;
+	root_dir = mm_new0(struct fsroot_file);
+	root_dir->path = "/";
+	root_dir->uid = root_uid;
+	root_dir->gid = root_gid;
+	root_dir->mode = root_mode;
+	hash_table_put(files, "/", root_dir);
+
 	open_files.num_files = 0;
 	open_files.num_slots = OPEN_FILES_INITIAL_NUM_SLOTS;
 	open_files.file_descriptors = mm_mallocn0(open_files.num_slots,
-			sizeof(struct fsroot_file_descriptor *));
+			sizeof(struct fsroot_file_descriptor*));
 	pthread_rwlock_init(&open_files.rwlock, NULL);
-
 	root_path_len = strlen(root);
 	if (root_path_len > sizeof(root_path) - 1)
 		goto error_nomem;
-	strcpy(root_path, root);
 
+	strcpy(root_path, root);
 	return FSROOT_OK;
+
 error_nomem:
 	fsroot_deinit();
 	return FSROOT_E_NOMEM;

@@ -19,7 +19,16 @@
 #define FSROOT_EOF		-6
 #define FSROOT_E_NOTOPEN	-7
 
-int fsroot_init(const char *root);
+/**
+ * \param[in] root Root folder where fsroot will store its files internally
+ * \return `FSROOT_OK` on success or a negative integer on error
+ *
+ * Initialize the fsroot environment.
+ *
+ * The length of the string \p root should be no greater than `PATH_MAX`, or
+ * `FSROOT_E_NOMEM` is returned.
+ */
+int fsroot_init(const char *root, uid_t root_uid, gid_t root_gid, mode_t root_mode);
 void fsroot_deinit(void);
 
 int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out);

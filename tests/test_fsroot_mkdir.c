@@ -16,7 +16,7 @@ START_TEST(test_fsroot_mkdir)
 	struct stat st;
 	char fullpath[PATH_MAX];
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	retval = fsroot_mkdir("foo-dir", 1000, 1000, 0040700);
@@ -47,7 +47,7 @@ START_TEST(test_fsroot_mkdir_and_create_file)
 	struct stat st;
 	char fullpath[PATH_MAX];
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	retval = fsroot_mkdir("foo-dir", 1000, 1000, 0040700);

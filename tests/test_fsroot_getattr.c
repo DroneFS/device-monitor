@@ -13,7 +13,7 @@ START_TEST(test_fsroot_getattr)
 	int retval, error = 0;
 	struct stat st;
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
@@ -37,7 +37,7 @@ START_TEST(test_fsroot_getattr_with_trailing_slash)
 	int retval, error = 0;
 	struct stat st;
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 

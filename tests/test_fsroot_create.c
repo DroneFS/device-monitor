@@ -93,7 +93,7 @@ START_TEST(test_fsroot_create)
 {
 	int retval;
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	create_foo_and_bar(0);
@@ -105,7 +105,7 @@ END_TEST
 
 START_TEST(test_fsroot_create_with_trailing_slash)
 {
-	int retval = fsroot_init(dir);
+	int retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	create_foo_and_bar(1);
@@ -122,7 +122,7 @@ START_TEST(test_fsroot_open)
 	char buf[500];
 	size_t bufsize = sizeof(buf);
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	create_foo_and_bar(0);
@@ -162,7 +162,7 @@ START_TEST(test_fsroot_open_with_trailing_slash)
 	char buf[500];
 	size_t bufsize = sizeof(buf);
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	create_foo_and_bar(1);

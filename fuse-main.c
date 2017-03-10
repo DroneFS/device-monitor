@@ -81,9 +81,17 @@ int dm_fullpath(const char *in, char *out, size_t outlen)
 
 static void *dm_fuse_init(struct fuse_conn_info *conn)
 {
+	struct fuse_context *ctx;
+
 	printf("DroneFS device monitor. Written by Ander Juaristi.\n");
 
-	if (fsroot_init(root_path) != FSROOT_OK) {
+	ctx = fuse_get_context();
+	if (!ctx) {
+		fprintf(stderr, "ERROR: Could not get FUSE context\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (fsroot_init(root_path, ctx->uid, ctx->gid, /* rwxr-xr-- */ 0040754) != FSROOT_OK) {
 		fprintf(stderr, "ERROR: Could not initialize fsroot\n");
 		exit(EXIT_FAILURE);
 	}

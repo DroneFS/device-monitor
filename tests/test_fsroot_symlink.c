@@ -32,7 +32,7 @@ START_TEST(test_fsroot_symlink)
 	int retval;
 	char path[PATH_MAX];
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	retval = fsroot_symlink("foo", "foo-target", 1000, 1000, 0120600);
@@ -62,7 +62,7 @@ START_TEST(test_fsroot_readlink)
 	char target[PATH_MAX];
 	size_t len = sizeof(target);
 
-	retval = fsroot_init(dir);
+	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	retval = fsroot_symlink("a", "asdfasdf", 1000, 1000, 0120600);
