@@ -30,7 +30,7 @@
 #define FSROOT_E_NOTOPEN	-7
 
 struct fsroot_file {
-	const char *path;
+	char *path;
 	mode_t mode;
 	uid_t uid;
 	gid_t gid;
@@ -157,6 +157,7 @@ static struct fsroot_file *fsroot_create_file(const char *path, uid_t uid, gid_t
 	char *fullpath = mm_new0n(PATH_MAX);
 
 	if (!fsroot_fullpath(path, fullpath, PATH_MAX)) {
+		mm_free(fullpath);
 		mm_free(file);
 		goto end;
 	}
@@ -438,8 +439,10 @@ end:
 	} else if (retval == FSROOT_E_SYSCALL) {
 		if (error != 0 && error_out)
 			*error_out = error;
-		if (file)
+		if (file) {
+			mm_free(file->path);
 			mm_free(file);
+		}
 	}
 
 	return retval;
@@ -726,6 +729,7 @@ int fsroot_release(const char *path)
 		if (fsroot_fullpath(path, fullpath, sizeof(fullpath))) {
 			if (unlink(fullpath) == 0) {
 				hash_table_remove(files, path);
+				mm_free(file->path);
 				mm_free(file);
 			} else {
 				retval = FSROOT_E_SYSCALL;
@@ -799,6 +803,7 @@ int fsroot_delete(const char *path)
 		/* Compute the full path and delete the file on disk */
 		if (unlink(file->path) == 0) {
 			hash_table_remove(files, path);
+			mm_free(file->path);
 			mm_free(file);
 		} else {
 			retval = FSROOT_E_SYSCALL;
@@ -929,6 +934,7 @@ int fsroot_symlink_delete(const char *linkpath)
 		return FSROOT_E_SYSCALL;
 
 	hash_table_remove(files, linkpath);
+	mm_free(file->path);
 	mm_free(file);
 
 	return FSROOT_OK;
@@ -1024,6 +1030,7 @@ int fsroot_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode)
 
 	return FSROOT_OK;
 error:
+	mm_free(file->path);
 	mm_free(file);
 	return FSROOT_E_SYSCALL;
 }
@@ -1057,6 +1064,7 @@ int fsroot_rmdir(const char *path)
 
 	if (retval == FSROOT_OK) {
 		hash_table_remove(files, path);
+		mm_free(file->path);
 		mm_free(file);
 	}
 
