@@ -427,7 +427,7 @@ int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags
 	 * the real file.
 	 */
 	close(fd);
-	hash_table_put(files, path, file);
+	hash_table_put(files, strdup(path), file);
 
 end:
 	/*
@@ -903,7 +903,7 @@ int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gi
 		return FSROOT_E_SYSCALL;
 
 	/* At this point symlink was created successfully, so we register it in our hash table */
-	hash_table_put(files, linkpath, file);
+	hash_table_put(files, strdup(linkpath), file);
 
 	return FSROOT_OK;
 }
@@ -1026,7 +1026,7 @@ int fsroot_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode)
 	if (mkdir(file->path, S_IFDIR | 0700) == -1)
 		goto error;
 
-	hash_table_put(files, path, file);
+	hash_table_put(files, strdup(path), file);
 
 	return FSROOT_OK;
 error:
@@ -1110,7 +1110,7 @@ int fsroot_rename(const char *path, const char *newpath)
 
 	file->path = mm_realloc((void *) file->path, strlen(full_newpath) + 1);
 	strcpy((char *) file->path, full_newpath);
-	hash_table_put(files, newpath, file);
+	hash_table_put(files, strdup(newpath), file);
 
 	return FSROOT_OK;
 }
@@ -1180,30 +1180,48 @@ int fsroot_chown(const char *path, uid_t uid, gid_t gid)
 	return FSROOT_OK;
 }
 
+struct fsroot_opendir_handle {
+	char *dir_path;
+//	DIR *dp;
+	hash_table_iterator *it;
+};
+
 /*
  * We return a 'fsroot_file' to the user rather than a 'fsroot_directory', because
  * we do not want them to tinker with the directory's fields, such as num_entries.
  */
-int fsroot_opendir(const char *path, void **outdir)
+int fsroot_opendir(const char *path, void **outdir, int *error)
 {
+	struct fsroot_opendir_handle *h;
 	struct fsroot_file *dir;
 	int retval;
-	DIR *dp;
-	char fullpath[PATH_MAX];
+//	DIR *dp;
 
-	if (!path || !outdir ||
-			!fsroot_fullpath(path, fullpath, sizeof(fullpath)))
+	if (!path || !outdir)
 		return FSROOT_E_BADARGS;
 
 	dir = hash_table_get(files, path);
 	if (dir && S_ISDIR(dir->mode)) {
-		dp = opendir(fullpath);
-		if (!dp) {
-			retval = FSROOT_E_SYSCALL;
-		} else {
-			*outdir = dir;
-			retval = FSROOT_OK;
-		}
+		h = mm_new0(struct fsroot_opendir_handle);
+		h->dir_path = strdup(path);
+		h->it = mm_new0(hash_table_iterator);
+		/* TODO ensure hash table is not being modified at this point */
+		hash_table_iterate(files, h->it);
+		*outdir = h;
+		retval = FSROOT_OK;
+//		dp = opendir(dir->path);
+//		if (!dp) {
+//			retval = FSROOT_E_SYSCALL;
+//			if (error)
+//				*error = errno;
+//		} else {
+//			h = mm_new0(struct fsroot_opendir_handle);
+//			h->dp = dp;
+//			h->dir_path = mm_new0(strlen(path) + 1);
+//			strcpy(h->dir_path, path);
+//			*outdir = h;
+//			retval = FSROOT_OK;
+//		}
 	} else {
 		retval = FSROOT_E_NOTEXISTS;
 	}
@@ -1211,42 +1229,50 @@ int fsroot_opendir(const char *path, void **outdir)
 	return retval;
 }
 
-int fsroot_readdir(void *dir, char *out, size_t outlen)
+int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 {
+	struct fsroot_opendir_handle *h = dir;
 	int initial_errno = errno;
 	int retval = FSROOT_OK;
 	struct dirent *de;
 
-	if (!dir || !out || !outlen)
+	if (!h || !h->it || !h->dir_path || !out || !outlen)
 		return FSROOT_E_BADARGS;
 
-__readdir:
-	de = readdir((DIR *) dir);
-	if (!de)
-		goto end;
+again:
+	if (hash_table_iter_next(h->it)) {
+		if (strcmp(h->it->key, "/") == 0)
+			goto again;
 
-	if (!hash_table_contains(files, de->d_name))
-		goto __readdir;
-	if (strlen(de->d_name) > outlen)
-		retval = FSROOT_E_NOMEM;
-	if (retval == FSROOT_OK)
-		strcpy(out, de->d_name);
+		if (strlen(h->it->key) > outlen)
+			return FSROOT_E_NOMEM;
+		strcpy(out, h->it->key + 1);
 
-	return retval;
-end:
+		return FSROOT_OK;
+	}
+
 	/*
 	 * If errno changed when we called readdir(),
 	 * that means an error happened, actually.
 	 * Else it just means there are no more files in the directory.
 	 */
-	return (initial_errno == errno ?
-			FSROOT_NOMORE :
-			FSROOT_E_SYSCALL);
+	if (initial_errno == errno) {
+		return FSROOT_NOMORE;
+	} else {
+		if (err)
+			*err = errno;
+		return FSROOT_E_SYSCALL;
+	}
 }
 
 void fsroot_closedir(void *dir)
 {
-	closedir((DIR *) dir);
+	struct fsroot_opendir_handle *h = dir;
+
+	if (h) {
+		mm_free(h->dir_path);
+//		closedir(h->dp);
+	}
 }
 
 void fsroot_deinit()
@@ -1265,6 +1291,8 @@ void fsroot_deinit()
 		for (hash_table_iterate(files, &iter); hash_table_iter_next(&iter);) {
 			__fsroot_release(iter.value, 0);
 	//		hash_table_remove(files, iter.key);
+			if (((struct fsroot_file *) iter.value)->path)
+				mm_free(((struct fsroot_file *) iter.value)->path);
 			mm_free(iter.value);
 		}
 
@@ -1295,16 +1323,6 @@ int fsroot_init(const char *root, uid_t root_uid, gid_t root_gid, mode_t root_mo
 	/* TODO how do we balance the space? (eg. Android) */
 	files = make_string_hash_table(10);
 
-	/* Initialize the root directory */
-	if (!S_ISDIR(root_mode))
-		return FSROOT_E_BADARGS;
-	root_dir = mm_new0(struct fsroot_file);
-	root_dir->path = "/";
-	root_dir->uid = root_uid;
-	root_dir->gid = root_gid;
-	root_dir->mode = root_mode;
-	hash_table_put(files, "/", root_dir);
-
 	open_files.num_files = 0;
 	open_files.num_slots = OPEN_FILES_INITIAL_NUM_SLOTS;
 	open_files.file_descriptors = mm_mallocn0(open_files.num_slots,
@@ -1315,6 +1333,18 @@ int fsroot_init(const char *root, uid_t root_uid, gid_t root_gid, mode_t root_mo
 		goto error_nomem;
 
 	strcpy(root_path, root);
+
+	/* Initialize the root directory */
+	if (!S_ISDIR(root_mode))
+		return FSROOT_E_BADARGS;
+
+	root_dir = mm_new0(struct fsroot_file);
+	root_dir->path = strdup(root);
+	root_dir->uid = root_uid;
+	root_dir->gid = root_gid;
+	root_dir->mode = root_mode;
+	hash_table_put(files, "/", root_dir);
+
 	return FSROOT_OK;
 
 error_nomem:

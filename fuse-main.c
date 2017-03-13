@@ -39,59 +39,20 @@
 #include <stddef.h>	/* offsetof() macro */
 #include <errno.h>
 #include <fuse.h>
-#include <fuse_lowlevel.h>
 #include "fsroot.h"
 
 static char root_path[PATH_MAX];
 static unsigned int root_path_len;
-
-int dm_fullpath(const char *in, char *out, size_t outlen)
-{
-#define FIRST_CHAR(v) (v[0])
-#define LAST_CHAR(v) (v[v##_len - 1])
-	char must_add_slash = 0, slash = '/';
-
-	if (!in || !out || outlen == 0)
-		return 0;
-
-	size_t in_len = strlen(in);
-	size_t ttl_len = root_path_len + in_len + 1;
-
-	if (LAST_CHAR(root_path) != '/' && FIRST_CHAR(in) != '/') {
-		ttl_len++;
-		must_add_slash = 1;
-	} else if (LAST_CHAR(root_path) == '/' && FIRST_CHAR(in) == '/') {
-		in++;
-		ttl_len--;
-	}
-
-	if (outlen < ttl_len)
-		return 0;
-
-	strcpy(out, root_path);
-	if (must_add_slash)
-		strncat(out, &slash, 1);
-	strcat(out, in);
-
-	fprintf(stderr, "DEBUG: fullpath = %s\n", out);
-	return 1;
-#undef FIRST_CHAR
-#undef LAST_CHAR
-}
+struct {
+	uid_t uid;
+	gid_t gid;
+} root_info;
 
 static void *dm_fuse_init(struct fuse_conn_info *conn)
 {
-	struct fuse_context *ctx;
-
 	printf("DroneFS device monitor. Written by Ander Juaristi.\n");
 
-	ctx = fuse_get_context();
-	if (!ctx) {
-		fprintf(stderr, "ERROR: Could not get FUSE context\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (fsroot_init(root_path, ctx->uid, ctx->gid, /* rwxr-xr-- */ 0040754) != FSROOT_OK) {
+	if (fsroot_init(root_path, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754) != FSROOT_OK) {
 		fprintf(stderr, "ERROR: Could not initialize fsroot\n");
 		exit(EXIT_FAILURE);
 	}
@@ -158,7 +119,7 @@ static int dm_fuse_mknod(const char *path, mode_t mode, dev_t dev)
 
 	retval = fsroot_create(path, fctx->uid, fctx->gid, mode, 0, &err);
 
-	if (retval == FSROOT_OK) {
+	if (retval >= 0) {
 		retval = fsroot_release(path);
 //		retval = 0;
 		goto end;
@@ -462,7 +423,7 @@ static int dm_fuse_truncate(const char *path, off_t newsize, struct fuse_file_in
  */
 static int dm_fuse_open(const char *path, struct fuse_file_info *fi)
 {
-	int fd, retval = -EFAULT;
+	int retval = -EFAULT;
 
 	if (!path)
 		return -EFAULT;
@@ -573,8 +534,8 @@ static int dm_fuse_write(const char *path,
  */
 static int dm_fuse_opendir(const char *path, struct fuse_file_info *fi)
 {
-	DIR *dp;
-	char fullpath[PATH_MAX];
+	int retval = -EFAULT, err = 0;
+	void *dir_handle = NULL;
 
 	if (!path)
 		return -EFAULT;
@@ -583,10 +544,27 @@ static int dm_fuse_opendir(const char *path, struct fuse_file_info *fi)
 	if (!fi)
 		return -EFAULT;
 
-	dp = opendir(fullpath);
-	fi->fh = (uintptr_t) dp;
+	switch (fsroot_opendir(path, &dir_handle, &err)) {
+	case FSROOT_E_BADARGS:
+		retval = -EFAULT;
+		break;
+	case FSROOT_E_SYSCALL:
+		retval = -err;
+		break;
+	case FSROOT_E_NOTEXISTS:
+		retval = -ENOENT;
+		break;
+	case FSROOT_OK:
+		/*
+		 * opendir() was successful, so we store the handle
+		 * for future calls to readdir(), closedir(), etc.
+		 */
+		fi->fh = (uintptr_t) dir_handle;
+		retval = 0;
+		break;
+	}
 
-	return (dp == NULL ? -1 : 0);
+	return retval;
 }
 
 /*
@@ -608,57 +586,44 @@ static int dm_fuse_opendir(const char *path, struct fuse_file_info *fi)
 static int dm_fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		off_t offset, struct fuse_file_info *fi)
 {
-	DIR *dp;
-	struct dirent *de;
-	struct stat st;
-//	struct fsroot_file file;
-	int retval = 0;
-	int initial_errno = errno;
+	void *dir_handle = (void *) fi->fh;
+	char dir_path[PATH_MAX];
+	int retval = -EFAULT, err = 0;
 
-	dp = (DIR *) (uintptr_t) fi->fh;
-	de = readdir(dp);
-	if (de == NULL) {
-		retval = (errno == initial_errno ? 0 : -errno);
-		goto end;
-	}
-
-	for (; de != NULL; de = readdir(dp)) {
-		if (stat(de->d_name, &st) == -1) {
-			retval = -errno;
+	do {
+		/* Iterate until there are no more entries */
+		retval = fsroot_readdir(dir_handle, dir_path, sizeof(dir_path), &err);
+		if (retval < 0) {
+			if (retval == FSROOT_E_SYSCALL)
+				retval = -err;
 			goto end;
 		}
 
-		if (!S_ISREG(st.st_mode)) {
-			if (filler(buf, de->d_name, NULL, 0) != 0) {
+		if (retval != FSROOT_NOMORE) {
+			/* We've got an entry. Pass it over to FUSE. */
+			if (filler(buf, dir_path, NULL, 0) != 0) {
 				retval = -ENOMEM;
 				goto end;
 			}
-		} else {
-//			switch (fsroot_get_file(de->d_name, &file)) {
-//			case 0:
-//				/* TODO fsroot_get_file() should directly give us the 'stat' for this file */
-//				if (filler(buf, de->d_name, NULL, 0) != 0) {
-//					retval = -ENOMEM;
-//					goto end;
-//				}
-//				break;
-//			case FSROOT_E_LIBC:
-//				retval = -errno;
-//				goto end;
-//				break;
-//			default:
-//				retval = -EFAULT;
-//				goto end;
-//				break;
-//			}
 		}
-	}
+	} while (retval != FSROOT_NOMORE);
 
-	if (retval == 0 && errno != initial_errno)
-		retval = -errno;
+	/* Everything went fine */
+	retval = 0;
 
 end:
 	return retval;
+}
+
+static int dm_fuse_releasedir(const char *path, struct fuse_file_info *fi)
+{
+	void *dir_handle = (void *) fi->fh;
+
+	if (!dir_handle)
+		return -EFAULT;
+
+	fsroot_closedir(dir_handle);
+	return 0;
 }
 
 /*
@@ -674,7 +639,7 @@ static int dm_fuse_access(const char *path, int mask)
 
 void print_help()
 {
-	printf("<mount point> <root dir>\n");
+	printf("<mount point> <root dir> <root UID> <root GID>\n");
 }
 
 int main(int argc, char **argv)
@@ -698,8 +663,9 @@ int main(int argc, char **argv)
 		.release	= dm_fuse_release,
 		.read		= dm_fuse_read,
 		.write		= dm_fuse_write,
-//		.opendir	= dm_fuse_opendir,
-//		.readdir	= dm_fuse_readdir,
+		.opendir	= dm_fuse_opendir,
+		.readdir	= dm_fuse_readdir,
+		.releasedir	= dm_fuse_releasedir
 //		.access		= dm_fuse_access
 	};
 	struct options {
@@ -725,6 +691,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	strcpy(root_path, argv[argc]);
+
+	/* TODO FIXME do not hardcode these */
+	root_info.uid = 1000;
+	root_info.gid = 1000;
 
 	args.argc = argc;
 	args.argv = argv;

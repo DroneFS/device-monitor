@@ -4,6 +4,8 @@
  *  Created on: 22 Nov 2016
  *      Author: Ander Juaristi
  */
+#include <malloc.h>
+
 void __attribute__((__malloc__)) *mm_malloc0(size_t len);
 void __attribute__((__malloc__)) *mm_mallocn0(size_t count, size_t len);
 

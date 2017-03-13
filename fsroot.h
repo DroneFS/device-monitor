@@ -50,8 +50,8 @@ int fsroot_rename(const char *path, const char *newpath);
 int fsroot_chmod(const char *path, mode_t mode);
 int fsroot_chown(const char *path, uid_t uid, gid_t gid);
 
-int fsroot_opendir(const char *path, void **outdir);
-int fsroot_readdir(void *dir, char *out, size_t outlen);
+int fsroot_opendir(const char *path, void **outdir, int *error);
+int fsroot_readdir(void *dir, char *out, size_t outlen, int *err);
 void fsroot_closedir(void *dir);
 
 
