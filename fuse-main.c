@@ -250,7 +250,7 @@ static int dm_fuse_mkdir(const char *path, mode_t mode)
 	if (!fctx)
 		return -EFAULT;
 
-	retval = fsroot_mkdir(path, fctx->uid, fctx->gid, mode);
+	retval = fsroot_mkdir(path, fctx->uid, fctx->gid, 0040000 | mode);
 
 	switch (retval) {
 	case FSROOT_OK:
