@@ -10,7 +10,7 @@ char dir[] = "fsroot-root";
 
 START_TEST(test_fsroot_root_path_mkdir_failure)
 {
-	int retval, error = 0;
+	int retval;
 
 	retval = fsroot_init(dir, 1000, 1000, 0040754);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",

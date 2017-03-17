@@ -16,18 +16,9 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <pthread.h>
+#include "fsroot.h"
 #include "hash.h"
 #include "mm.h"
-
-#define FSROOT_NOMORE		 1
-#define FSROOT_OK		 0
-#define FSROOT_E_BADARGS	-1
-#define FSROOT_E_EXISTS		-2
-#define FSROOT_E_NOTEXISTS	-3
-#define FSROOT_E_NOMEM		-4
-#define FSROOT_E_SYSCALL	-5
-#define FSROOT_EOF		-6
-#define FSROOT_E_NOTOPEN	-7
 
 struct fsroot_file {
 	char *path;
@@ -1181,9 +1172,7 @@ int fsroot_chown(const char *path, uid_t uid, gid_t gid)
 }
 
 struct fsroot_opendir_handle {
-	char *dir_path;
-//	DIR *dp;
-	hash_table_iterator *it;
+	DIR *dp;
 };
 
 /*
@@ -1194,19 +1183,21 @@ int fsroot_opendir(const char *path, void **outdir, int *error)
 {
 	struct fsroot_opendir_handle *h;
 	struct fsroot_file *dir;
+	char fullpath[PATH_MAX];
 	int retval;
-//	DIR *dp;
+	DIR *dp;
 
-	if (!path || !outdir)
+	if (!path || !outdir || !fsroot_fullpath(path, fullpath, sizeof(fullpath)))
 		return FSROOT_E_BADARGS;
+
+	dp = opendir(fullpath);
+	if (!dp)
+		return FSROOT_E_SYSCALL;
 
 	dir = hash_table_get(files, path);
 	if (dir && S_ISDIR(dir->mode)) {
 		h = mm_new0(struct fsroot_opendir_handle);
-		h->dir_path = strdup(path);
-		h->it = mm_new0(hash_table_iterator);
-		/* TODO ensure hash table is not being modified at this point */
-		hash_table_iterate(files, h->it);
+		h->dp = dp;
 		*outdir = h;
 		retval = FSROOT_OK;
 	} else {
@@ -1220,24 +1211,25 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 {
 	struct fsroot_opendir_handle *h = dir;
 	int initial_errno = errno;
-	int retval = FSROOT_OK;
 	struct dirent *de;
 
-	if (!h || !h->it || !h->dir_path || !out || !outlen)
+	if (!h || !h->dp || !out || !outlen)
 		return FSROOT_E_BADARGS;
 
-again:
-	if (hash_table_iter_next(h->it)) {
-		if (strcmp(h->it->key, "/") == 0)
-			goto again;
+	do {
+		de = readdir(h->dp);
+		if (!de)
+			goto error;
+	} while (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0);
 
-		if (strlen(h->it->key) > outlen)
-			return FSROOT_E_NOMEM;
-		strcpy(out, h->it->key + 1);
+	/* We test for the NULL-terminator as well */
+	if (strlen(de->d_name) >= outlen)
+		return FSROOT_E_NOMEM;
 
-		return FSROOT_OK;
-	}
+	strncpy(out, de->d_name, outlen);
+	return FSROOT_OK;
 
+error:
 	/*
 	 * If errno changed when we called readdir(),
 	 * that means an error happened, actually.
@@ -1256,10 +1248,8 @@ void fsroot_closedir(void *dir)
 {
 	struct fsroot_opendir_handle *h = dir;
 
-	if (h) {
-		mm_free(h->dir_path);
-//		closedir(h->dp);
-	}
+	if (h)
+		closedir(h->dp);
 }
 
 void fsroot_deinit()
