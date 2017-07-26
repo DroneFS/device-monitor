@@ -1248,8 +1248,10 @@ void fsroot_closedir(void *dir)
 {
 	struct fsroot_opendir_handle *h = dir;
 
-	if (h)
+	if (h) {
 		closedir(h->dp);
+		mm_free(h);
+	}
 }
 
 void fsroot_deinit()
