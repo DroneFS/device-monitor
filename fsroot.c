@@ -828,7 +828,6 @@ int fsroot_delete(const char *path)
  */
 int fsroot_getattr(const char *path, struct stat *out_st)
 {
-	struct stat st;
 	struct fsroot_file *file;
 
 	if (!path || !out_st)
@@ -838,13 +837,12 @@ int fsroot_getattr(const char *path, struct stat *out_st)
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
-	if (lstat(file->path, &st) == -1)
+	if (lstat(file->path, out_st) == -1)
 		return FSROOT_E_SYSCALL;
 
-	st.st_mode = file->mode;
-	st.st_uid = file->uid;
-	st.st_gid = file->gid;
-	memcpy(out_st, &st, sizeof(struct stat));
+	out_st->st_mode = file->mode;
+	out_st->st_uid = file->uid;
+	out_st->st_gid = file->gid;
 
 	return FSROOT_OK;
 }
