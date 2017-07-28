@@ -19,3 +19,13 @@ AC_PROG_LIBTOOL
 LT_INIT
 
 AC_OUTPUT
+
+echo
+echo "C compiler flags: $CFLAGS"
+echo -n "Installation prefix: $prefix"
+if ! test -d "$prefix"; then
+  echo " (not a directory)"
+else
+  echo " (OK)"
+fi
+echo
