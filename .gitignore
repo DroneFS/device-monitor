@@ -3,6 +3,8 @@
 .settings/**
 .autotools
 # Autotools stuff
+Makefile
+Makefile.in
 .deps/**
 .libs/**
 autom4te.cache/**
@@ -14,3 +16,10 @@ out/**
 *.o
 *.lo
 *.la
+*.m4
+tests/.deps/**
+tests/.libs/**
+tests/*.log
+tests/*.trs
+tests/Makefile
+tests/Makefile.in
