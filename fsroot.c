@@ -1171,6 +1171,8 @@ int fsroot_chown(const char *path, uid_t uid, gid_t gid)
 
 struct fsroot_opendir_handle {
 	DIR *dp;
+	char *last_dir;
+	char *prefix;
 };
 
 /*
@@ -1196,6 +1198,7 @@ int fsroot_opendir(const char *path, void **outdir, int *error)
 	if (dir && S_ISDIR(dir->mode)) {
 		h = mm_new0(struct fsroot_opendir_handle);
 		h->dp = dp;
+		h->prefix = strdup(path);
 		*outdir = h;
 		retval = FSROOT_OK;
 	} else {
@@ -1210,21 +1213,43 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 	struct fsroot_opendir_handle *h = dir;
 	int initial_errno = errno;
 	struct dirent *de;
+	const char *source;
+	char path[PATH_MAX];
 
 	if (!h || !h->dp || !out || !outlen)
 		return FSROOT_E_BADARGS;
 
-	do {
+	if (h->last_dir) {
+		source = h->last_dir;
+		goto return_dir;
+	}
+
+	for (;;) {
 		de = readdir(h->dp);
 		if (!de)
 			goto error;
-	} while (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0);
 
+		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+			continue;
+
+		snprintf(path, sizeof(path), "%s/%s", h->prefix, de->d_name);
+		if (hash_table_contains(files, path))
+			break;
+	}
+
+	source = de->d_name;
+
+return_dir:
 	/* We test for the NULL-terminator as well */
-	if (strlen(de->d_name) >= outlen)
+	if (strlen(source) >= outlen) {
+		if (!h->last_dir)
+			h->last_dir = strdup(de->d_name);
 		return FSROOT_E_NOMEM;
+	}
 
-	strncpy(out, de->d_name, outlen);
+	strncpy(out, source, outlen);
+	if (h->last_dir)
+		mm_free(h->last_dir);
 	return FSROOT_OK;
 
 error:
@@ -1242,13 +1267,18 @@ error:
 	}
 }
 
-void fsroot_closedir(void *dir)
+void fsroot_closedir(void **dir)
 {
-	struct fsroot_opendir_handle *h = dir;
+	struct fsroot_opendir_handle *h = *dir;
 
 	if (h) {
 		closedir(h->dp);
+		if (h->last_dir)
+			mm_free(h->last_dir);
+		if (h->prefix)
+			mm_free(h->prefix);
 		mm_free(h);
+		*dir = NULL;
 	}
 }
 

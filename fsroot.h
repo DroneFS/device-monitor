@@ -52,6 +52,6 @@ int fsroot_chown(const char *path, uid_t uid, gid_t gid);
 
 int fsroot_opendir(const char *path, void **outdir, int *error);
 int fsroot_readdir(void *dir, char *out, size_t outlen, int *err);
-void fsroot_closedir(void *dir);
+void fsroot_closedir(void **dir);
 
 #endif /* FSROOT_H_ */

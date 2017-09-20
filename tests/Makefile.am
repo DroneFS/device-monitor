@@ -1,9 +1,9 @@
 TESTS = test_fsroot_create test_fsroot_symlink test_fsroot_rename test_fsroot_chmod_chown \
-	test_fsroot_getattr test_fsroot_mkdir test_fsroot_root_path \
+	test_fsroot_getattr test_fsroot_mkdir test_fsroot_readdir test_fsroot_root_path \
 	test_fsroot_path_basename test_fsroot_path_traversal
 
 check_PROGRAMS = test_fsroot_create test_fsroot_symlink test_fsroot_rename test_fsroot_chmod_chown \
-	test_fsroot_getattr test_fsroot_mkdir test_fsroot_root_path \
+	test_fsroot_getattr test_fsroot_mkdir test_fsroot_readdir test_fsroot_root_path \
 	test_fsroot_path_basename test_fsroot_path_traversal
 
 test_fsroot_create_SOURCES = test_fsroot_create.c $(top_builddir)/fsroot.h
@@ -29,6 +29,10 @@ test_fsroot_getattr_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
 test_fsroot_mkdir_SOURCES = test_fsroot_mkdir.c $(top_builddir)/fsroot.h
 test_fsroot_mkdir_CFLAGS = @CHECK_CFLAGS@
 test_fsroot_mkdir_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
+
+test_fsroot_readdir_SOURCES = test_fsroot_readdir.c $(top_builddir)/fsroot.h
+test_fsroot_readdir_CFLAGS = @CHECK_CFLAGS@
+test_fsroot_readdir_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
 
 test_fsroot_root_path_SOURCES = test_fsroot_root_path.c $(top_builddir)/fsroot.h
 test_fsroot_root_path_CFLAGS = @CHECK_CFLAGS@
