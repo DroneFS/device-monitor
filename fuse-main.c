@@ -617,12 +617,10 @@ end:
 
 static int dm_fuse_releasedir(const char *path, struct fuse_file_info *fi)
 {
-	void *dir_handle = (void *) fi->fh;
-
-	if (!dir_handle)
+	if (!fi->fh)
 		return -EFAULT;
 
-	fsroot_closedir(dir_handle);
+	fsroot_closedir((void **) &fi->fh);
 	return 0;
 }
 

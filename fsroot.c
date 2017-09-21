@@ -1232,9 +1232,17 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
 			continue;
 
-		snprintf(path, sizeof(path), "%s/%s", h->prefix, de->d_name);
-		if (hash_table_contains(files, path))
+		if (strcmp(h->prefix, "/"))
+			snprintf(path, sizeof(path), "%s/%s", h->prefix, de->d_name);
+		else
+			snprintf(path, sizeof(path), "/%s", de->d_name);
+
+		if (hash_table_contains(files, path)) {
+			fprintf(stderr, "fsroot_readdir: Found path '%s'\n", path);
 			break;
+		} else {
+			fprintf(stderr, "fsroot_readdir: Path '%s' not in hash table\n", path);
+		}
 	}
 
 	source = de->d_name;
