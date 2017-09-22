@@ -18,26 +18,19 @@
 #include <errno.h>
 #include <pthread.h>
 #include "fsroot.h"
+#include "fsroot-internal.h"
+#include "fsroot-db.h"
 #include "fsroot-crypto.h"
 #include "hash.h"
 #include "mm.h"
 
-struct fsroot_file {
-	char *path;
-	mode_t mode;
-	uid_t uid;
-	gid_t gid;
-	struct {
-		int sync      : 1;
-		int tmpfile   : 1;
-		int is_synced : 1;
-		int delete    : 1;
-	} flags;
-	pthread_rwlock_t rwlock;
-	char *buf;
-	size_t buf_len;
-};
-
+/**
+ * \file
+ * \brief fsroot core functions
+ * \defgroup fsroot fsroot core functions
+ *
+ * @{
+ */
 struct fsroot_file_descriptor {
 	int8_t can_read,
 		can_write,
@@ -45,38 +38,42 @@ struct fsroot_file_descriptor {
 	struct fsroot_file *file;
 };
 
-static struct hash_table *files = NULL;
-
-static struct {
+struct fsroot_open_files {
 	struct fsroot_file_descriptor **file_descriptors;
 	size_t num_files;
 	size_t num_slots;
 #define OPEN_FILES_INITIAL_NUM_SLOTS 5
 	pthread_rwlock_t rwlock;
-} open_files;
+};
 
-static char root_path[PATH_MAX];
-static unsigned int root_path_len;
+struct _fsroot_st
+{
+	char root_path[PATH_MAX + 1];
+	char *database_file;
+	struct hash_table *files;
+	struct fsroot_open_files open_files;
+};
 
 fsroot_crypto_t fs_crypto;
 static char challenge[] = "libdch.so";
 
-static int fsroot_fullpath(const char *in, char *out, size_t outlen)
+static int fsroot_fullpath(const char *root_path, const char *in, char *out, size_t outlen)
 {
 #define FIRST_CHAR(v) (v[0])
-#define LAST_CHAR(v) (v[v##_len - 1])
+#define LAST_CHAR(v, len) (v[len - 1])
 	char must_add_slash = 0, slash = '/';
 
 	if (!in || !out || outlen == 0)
 		return 0;
 
-	size_t in_len = strlen(in);
+	size_t in_len = strlen(in),
+	       root_path_len = strlen(root_path);
 	size_t ttl_len = root_path_len + in_len + 1;
 
-	if (LAST_CHAR(root_path) != '/' && FIRST_CHAR(in) != '/') {
+	if (LAST_CHAR(root_path, root_path_len) != '/' && FIRST_CHAR(in) != '/') {
 		ttl_len++;
 		must_add_slash = 1;
-	} else if (LAST_CHAR(root_path) == '/' && FIRST_CHAR(in) == '/') {
+	} else if (LAST_CHAR(root_path, root_path_len) == '/' && FIRST_CHAR(in) == '/') {
 		in++;
 		ttl_len--;
 	}
@@ -167,12 +164,12 @@ error:
  * or else the file descriptor.
  * FIXME Maybe on Android we should not allocate a PATH_MAX chunk
  */
-static struct fsroot_file *fsroot_create_file(const char *path, uid_t uid, gid_t gid, mode_t mode)
+static struct fsroot_file *fsroot_create_file(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t mode)
 {
 	struct fsroot_file *file = mm_new0(struct fsroot_file);
 	char *fullpath = mm_new0n(PATH_MAX);
 
-	if (!fsroot_fullpath(path, fullpath, PATH_MAX)) {
+	if (!fsroot_fullpath(fs->root_path, path, fullpath, PATH_MAX)) {
 		mm_free(fullpath);
 		mm_free(file);
 		goto end;
@@ -224,7 +221,7 @@ end:
 	return retval;
 }
 
-static size_t __fsroot_open(struct fsroot_file *file, int flags)
+static size_t __fsroot_open(struct fsroot_open_files *open_files, struct fsroot_file *file, int flags)
 {
 	struct fsroot_file_descriptor *fildes = mm_new0(struct fsroot_file_descriptor);
 	size_t retval;
@@ -245,18 +242,18 @@ static size_t __fsroot_open(struct fsroot_file *file, int flags)
 	 * Finally, add the file descriptor to the array of open files,
 	 * resizing the array if needed.
 	 */
-	pthread_rwlock_wrlock(&open_files.rwlock);
-	if (open_files.num_files == open_files.num_slots) {
-		open_files.num_slots <<= 1;
+	pthread_rwlock_wrlock(&open_files->rwlock);
+	if (open_files->num_files == open_files->num_slots) {
+		open_files->num_slots <<= 1;
 		/* FIXME: if mm_reallocn() fails, the lock remains held (handle this in the no-mem callback) */
-		open_files.file_descriptors = mm_reallocn(open_files.file_descriptors,
-				open_files.num_slots,
+		open_files->file_descriptors = mm_reallocn(open_files->file_descriptors,
+				open_files->num_slots,
 				sizeof(struct fsroot_file_descriptor *));
 	}
 
-	open_files.file_descriptors[open_files.num_files] = fildes;
-	retval = open_files.num_files++;
-	pthread_rwlock_unlock(&open_files.rwlock);
+	open_files->file_descriptors[open_files->num_files] = fildes;
+	retval = open_files->num_files++;
+	pthread_rwlock_unlock(&open_files->rwlock);
 
 	return retval;
 }
@@ -265,19 +262,19 @@ static size_t __fsroot_open(struct fsroot_file *file, int flags)
  * Returns the number of file descriptors that were referring to
  * the file.
  */
-static unsigned int __fsroot_close(struct fsroot_file *file)
+static unsigned int __fsroot_close(struct fsroot_open_files *open_files, struct fsroot_file *file)
 {
 	struct fsroot_file_descriptor *fildes, **file_descriptors;
 	unsigned int num_files = 0, num_deleted_files = 0;
 	int retval;
 
-	pthread_rwlock_wrlock(&open_files.rwlock);
+	pthread_rwlock_wrlock(&open_files->rwlock);
 	/*
 	 * Walk through all the file descriptors
 	 * and mark as deleted those that refer to this file.
 	 */
-	for (unsigned int i = 0; i < open_files.num_files; i++) {
-		fildes = open_files.file_descriptors[i];
+	for (unsigned int i = 0; i < open_files->num_files; i++) {
+		fildes = open_files->file_descriptors[i];
 		if (fildes->file == file) {
 			fildes->deleted = 1;
 			num_deleted_files++;
@@ -287,39 +284,39 @@ static unsigned int __fsroot_close(struct fsroot_file *file)
 	if (num_deleted_files == 0)
 		goto end;
 
-	file_descriptors = mm_new(open_files.num_slots,
+	file_descriptors = mm_new(open_files->num_slots,
 			struct fsroot_file_descriptor *);
 
 	/*
 	 * Copy all the non-deleted file descriptors to the new array,
 	 * and free the deleted ones.
 	 */
-	for (unsigned int i = 0; i < open_files.num_files; i++) {
-		fildes = open_files.file_descriptors[i];
+	for (unsigned int i = 0; i < open_files->num_files; i++) {
+		fildes = open_files->file_descriptors[i];
 		if (!fildes->deleted)
 			file_descriptors[num_files++] = fildes;
 		else
 			mm_free(fildes);
 	}
 
-	mm_free(open_files.file_descriptors);
-	open_files.file_descriptors = file_descriptors;
-	open_files.num_files = num_files;
+	mm_free(open_files->file_descriptors);
+	open_files->file_descriptors = file_descriptors;
+	open_files->num_files = num_files;
+
+	pthread_rwlock_unlock(&open_files->rwlock);
 
 	/* If there are no open files left, unload all the challenges */
 	retval = fsroot_crypto_unload_challenge(&fs_crypto, challenge);
 	if (retval != FSROOT_OK && retval != FSROOT_E_NOTFOUND)
 		fprintf(stderr, "ERROR: Could not unload challenge '%s'\n", challenge);
 
-	pthread_rwlock_unlock(&open_files.rwlock);
-
 end:
 	return num_deleted_files;
 }
 
-static int __fsroot_release(struct fsroot_file *file, char strict)
+static int __fsroot_release(struct fsroot_open_files *open_files, struct fsroot_file *file, char strict)
 {
-	if (!__fsroot_close(file) && strict)
+	if (!__fsroot_close(open_files, file) && strict)
 		return FSROOT_E_NOTOPEN;
 
 	if (file->buf) {
@@ -362,14 +359,14 @@ static int __fsroot_release(struct fsroot_file *file, char strict)
  *  - O_NOCTTY
  *  - O_NOFOLLOW
  */
-int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out)
+int fsroot_create(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out)
 {
 	int error = 0, retval = FSROOT_OK, fd;
 	struct fsroot_file *file;
 
-	if (!path || !mode || !S_ISREG(mode))
+	if (!fs || !path || !mode || !S_ISREG(mode))
 		return FSROOT_E_BADARGS;
-	if (hash_table_contains(files, path))
+	if (hash_table_contains(fs->files, path))
 		return FSROOT_E_EXISTS;
 
 	/* These flags are not valid, and we'll return an error if we find them */
@@ -395,7 +392,7 @@ int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags
 	if (retval != FSROOT_OK)
 		goto end;
 
-	file = fsroot_create_file(path, uid, gid, mode);
+	file = fsroot_create_file(fs, path, uid, gid, mode);
 	if (!file) {
 		error = EINVAL;
 		retval = FSROOT_E_SYSCALL;
@@ -462,7 +459,7 @@ int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags
 	 * the real file.
 	 */
 	close(fd);
-	hash_table_put(files, strdup(path), file);
+	hash_table_put(fs->files, strdup(path), file);
 
 end:
 	/*
@@ -470,7 +467,7 @@ end:
 	 * generate a file descriptor for it.
 	 */
 	if (retval == FSROOT_OK) {
-		retval = __fsroot_open(file, flags);
+		retval = __fsroot_open(&fs->open_files, file, flags);
 	} else if (retval == FSROOT_E_SYSCALL) {
 		if (error != 0 && error_out)
 			*error_out = error;
@@ -495,19 +492,19 @@ end:
  * This function will not complain if file creation (`O_CREAT`, `O_EXCL` )
  * or truncation (`O_TRUNC`) flags are passed, but they will be completely ignored.
  */
-int fsroot_open(const char *path, int flags)
+int fsroot_open(fsroot_t *fs, const char *path, int flags)
 {
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 
 	/* File must exist, due to a previous call to fsroot_create() */
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
-	return __fsroot_open(file, flags);
+	return __fsroot_open(&fs->open_files, file, flags);
 }
 
 /**
@@ -534,20 +531,20 @@ int fsroot_open(const char *path, int flags)
  *
  * If an error happens, \p buf will not be modified in any way.
  */
-int fsroot_read(int fd, char *buf, size_t size, off_t offset, int *error_out)
+int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int *error_out)
 {
 	int retval, error = 0;
 	unsigned int idx;
 	struct fsroot_file *file;
 	struct fsroot_file_descriptor *fildes;
 
-	if (!buf || !size || fd < 0)
+	if (!fs || !buf || !size || fd < 0)
 		return FSROOT_E_BADARGS;
 
-	pthread_rwlock_rdlock(&open_files.rwlock);
+	pthread_rwlock_rdlock(&fs->open_files.rwlock);
 
-	if (fd >= open_files.num_files) {
-		pthread_rwlock_unlock(&open_files.rwlock);
+	if (fd >= fs->open_files.num_files) {
+		pthread_rwlock_unlock(&fs->open_files.rwlock);
 		return FSROOT_E_BADARGS;
 	}
 
@@ -555,8 +552,8 @@ int fsroot_read(int fd, char *buf, size_t size, off_t offset, int *error_out)
 	 * TODO maybe we should add additional sanity checks here,
 	 * like checking the PID of the reader.
 	 */
-	fildes = open_files.file_descriptors[fd];
-	pthread_rwlock_unlock(&open_files.rwlock);
+	fildes = fs->open_files.file_descriptors[fd];
+	pthread_rwlock_unlock(&fs->open_files.rwlock);
 
 	if (!fildes->can_read) {
 		/* ERROR: this file was not open for reading */
@@ -617,20 +614,20 @@ end:
  *
  * If an error happens, the file will not be modified in any way.
  */
-int fsroot_write(int fd, const char *buf, size_t size, off_t offset, int *error_out)
+int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offset, int *error_out)
 {
 	int retval = FSROOT_OK, error;
 	unsigned int idx;
 	struct fsroot_file *file;
 	struct fsroot_file_descriptor *fildes;
 
-	if (!buf || !size || fd < 0)
+	if (!fs || !buf || !size || fd < 0)
 		return FSROOT_E_BADARGS;
 
-	pthread_rwlock_rdlock(&open_files.rwlock);
+	pthread_rwlock_rdlock(&fs->open_files.rwlock);
 
-	if (fd >= open_files.num_files) {
-		pthread_rwlock_unlock(&open_files.rwlock);
+	if (fd >= fs->open_files.num_files) {
+		pthread_rwlock_unlock(&fs->open_files.rwlock);
 		return FSROOT_E_BADARGS;
 	}
 
@@ -638,8 +635,8 @@ int fsroot_write(int fd, const char *buf, size_t size, off_t offset, int *error_
 	 * TODO maybe we should add additional sanity checks here,
 	 * like checking the PID of the reader.
 	 */
-	fildes = open_files.file_descriptors[fd];
-	pthread_rwlock_unlock(&open_files.rwlock);
+	fildes = fs->open_files.file_descriptors[fd];
+	pthread_rwlock_unlock(&fs->open_files.rwlock);
 
 	if (!fildes->can_write) {
 		/* ERROR: this file was not opened for writing */
@@ -708,14 +705,14 @@ end_nolock:
  * If the specified file does not exists, or is not a regular file,
  * then this function returns `FSROOT_E_NOTEXISTS`.
  */
-int fsroot_sync(const char *path)
+int fsroot_sync(fsroot_t *fs, const char *path)
 {
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
@@ -726,7 +723,7 @@ int fsroot_sync(const char *path)
  * \param[in] path Relative path to a file
  * \return `FSROOT_OK` on success, or a negative integer on error
  *
- * This function will destroy all the open file descriptors for the
+ * This function will destroy all the open file descriptors for the file
  * specified by the path \p path. All the file descriptors for this file
  * (obtained with fsroot_create() and fsroot_open()) will no longer be valid,
  * and **calling fsroot_read() and fsroot_write() with either of these will have
@@ -741,29 +738,29 @@ int fsroot_sync(const char *path)
  * If the file exists but there are no file descriptors associated with it this function
  * returns `FSROOT_E_NOTOPEN`.
  */
-int fsroot_release(const char *path)
+int fsroot_release(fsroot_t *fs, const char *path)
 {
 	int retval;
 	char fullpath[PATH_MAX];
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
 	if (!file->flags.is_synced)
 		fsroot_sync_file(file);
 
-	retval = __fsroot_release(file, 1);
+	retval = __fsroot_release(&fs->open_files, file, 1);
 
 	/* Finally delete the file from disk if it has to be deleted */
 	if (file->flags.tmpfile || file->flags.delete) {
-		if (fsroot_fullpath(path, fullpath, sizeof(fullpath))) {
+		if (fsroot_fullpath(fs->root_path, path, fullpath, sizeof(fullpath))) {
 			if (unlink(fullpath) == 0) {
-				hash_table_remove(files, path);
+				hash_table_remove(fs->files, path);
 				mm_free(file->path);
 				mm_free(file);
 			} else {
@@ -795,15 +792,15 @@ int fsroot_release(const char *path)
  *
  * If the underlying call to `unlink(2)` fails, `FSROOT_E_SYSCALL` is returned.
  */
-int fsroot_delete(const char *path)
+int fsroot_delete(fsroot_t *fs, const char *path)
 {
 	int retval = FSROOT_OK, is_open = 0;
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
@@ -819,14 +816,14 @@ int fsroot_delete(const char *path)
 	 * Walk over all the open file descriptors to see
 	 * if the file is open.
 	 */
-	pthread_rwlock_rdlock(&open_files.rwlock);
-	for (size_t i = 0; i < open_files.num_files; i++) {
-		if (open_files.file_descriptors[i]->file == file) {
+	pthread_rwlock_rdlock(&fs->open_files.rwlock);
+	for (size_t i = 0; i < fs->open_files.num_files; i++) {
+		if (fs->open_files.file_descriptors[i]->file == file) {
 			is_open = 1;
 			break;
 		}
 	}
-	pthread_rwlock_unlock(&open_files.rwlock);
+	pthread_rwlock_unlock(&fs->open_files.rwlock);
 
 	if (is_open) {
 		/*
@@ -837,7 +834,7 @@ int fsroot_delete(const char *path)
 	} else {
 		/* Compute the full path and delete the file on disk */
 		if (unlink(file->path) == 0) {
-			hash_table_remove(files, path);
+			hash_table_remove(fs->files, path);
 			mm_free(file->path);
 			mm_free(file);
 		} else {
@@ -870,14 +867,14 @@ int fsroot_delete(const char *path)
  * In any case, this function is guaranteed no to change the contents pointed to by \p out_st
  * in any way if a value different than `FSROOT_OK` is returned.
  */
-int fsroot_getattr(const char *path, struct stat *out_st)
+int fsroot_getattr(fsroot_t *fs, const char *path, struct stat *out_st)
 {
 	struct fsroot_file *file;
 
-	if (!path || !out_st)
+	if (!fs || !path || !out_st)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
@@ -914,19 +911,19 @@ int fsroot_getattr(const char *path, struct stat *out_st)
  * If \p linkpath already exists, regardless of whether it is a symbolic link or not,
  * this function goes no further and returns `FSROOT_E_EXISTS`.
  */
-int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gid, mode_t mode)
+int fsroot_symlink(fsroot_t *fs, const char *linkpath, const char *target, uid_t uid, gid_t gid, mode_t mode)
 {
 	struct fsroot_file *file = NULL;
 
-	if (!linkpath || !target)
+	if (!fs || !linkpath || !target)
 		return FSROOT_E_BADARGS;
 	if (!S_ISLNK(mode)) /* This is not a symlink! */
 		return FSROOT_E_BADARGS;
 
-	if (hash_table_contains(files, linkpath))
+	if (hash_table_contains(fs->files, linkpath))
 		return FSROOT_E_EXISTS;
 
-	file = fsroot_create_file(linkpath, uid, gid, mode);
+	file = fsroot_create_file(fs, linkpath, uid, gid, mode);
 	if (!file)
 		return FSROOT_E_BADARGS;
 
@@ -936,7 +933,7 @@ int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gi
 		return FSROOT_E_SYSCALL;
 
 	/* At this point symlink was created successfully, so we register it in our hash table */
-	hash_table_put(files, strdup(linkpath), file);
+	hash_table_put(fs->files, strdup(linkpath), file);
 
 	return FSROOT_OK;
 }
@@ -952,21 +949,21 @@ int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gi
  * If the underlying call to `unlink(2)` fails, `FSROOT_E_SYSCALL`
  * is returned.
  */
-int fsroot_symlink_delete(const char *linkpath)
+int fsroot_symlink_delete(fsroot_t *fs, const char *linkpath)
 {
 	struct fsroot_file *file;
 
-	if (!linkpath)
+	if (!fs || !linkpath)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, linkpath);
+	file = hash_table_get(fs->files, linkpath);
 	if (!file || !S_ISLNK(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
 	if (unlink(file->path) == -1)
 		return FSROOT_E_SYSCALL;
 
-	hash_table_remove(files, linkpath);
+	hash_table_remove(fs->files, linkpath);
 	mm_free(file->path);
 	mm_free(file);
 
@@ -990,16 +987,16 @@ int fsroot_symlink_delete(const char *linkpath)
  * If \p linkpath does not exist or it is not a symbolic link, the function
  * returns `FSROOT_E_NOTEXISTS` without touching \p dst or \p dstlen.
  */
-int fsroot_readlink(const char *linkpath, char *dst, size_t *dstlen)
+int fsroot_readlink(fsroot_t *fs, const char *linkpath, char *dst, size_t *dstlen)
 {
 	struct stat st;
 	size_t required_size, actual_len;
 	struct fsroot_file *file;
 
-	if (!linkpath || !dst || !dstlen)
+	if (!fs || !linkpath || !dst || !dstlen)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, linkpath);
+	file = hash_table_get(fs->files, linkpath);
 	if (file == NULL || !S_ISLNK(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
@@ -1041,25 +1038,25 @@ int fsroot_readlink(const char *linkpath, char *dst, size_t *dstlen)
  *
  * If the underlying call to **mkdir(2)** fails, `FSROOT_E_SYSCALL` is returned.
  */
-int fsroot_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode)
+int fsroot_mkdir(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t mode)
 {
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 	if (!S_ISDIR(mode)) /* This is not a directory! */
 		return FSROOT_E_BADARGS;
 
-	if (hash_table_contains(files, path))
+	if (hash_table_contains(fs->files, path))
 		return FSROOT_E_EXISTS;
 
-	file = fsroot_create_file(path, uid, gid, mode);
+	file = fsroot_create_file(fs, path, uid, gid, mode);
 	if (!file)
 		return FSROOT_E_BADARGS;
 	if (mkdir(file->path, S_IFDIR | 0700) == -1)
 		goto error;
 
-	hash_table_put(files, strdup(path), file);
+	hash_table_put(fs->files, strdup(path), file);
 
 	return FSROOT_OK;
 error:
@@ -1080,18 +1077,18 @@ error:
  * If the underlying call to **mkdir(2)** fails, `FSROOT_E_SYSCALL` is returned.
  * In particular, such a call will fail if the directory is not empty.
  */
-int fsroot_rmdir(const char *path)
+int fsroot_rmdir(fsroot_t *fs, const char *path)
 {
 	int retval = FSROOT_OK;
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 	/* Obviously we loudly complain if someone tries to remove the root dir */
 	if (path[0] == '/' && path[1] == 0)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (file == NULL || !S_ISDIR(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
@@ -1099,7 +1096,7 @@ int fsroot_rmdir(const char *path)
 		retval = FSROOT_E_SYSCALL;
 
 	if (retval == FSROOT_OK) {
-		hash_table_remove(files, path);
+		hash_table_remove(fs->files, path);
 		mm_free(file->path);
 		mm_free(file);
 	}
@@ -1120,30 +1117,30 @@ int fsroot_rmdir(const char *path)
  * In contrast, if a file already exists named \p newpath, `FSROOT_E_EXISTS` is returned
  * and no action is taken.
  */
-int fsroot_rename(const char *path, const char *newpath)
+int fsroot_rename(fsroot_t *fs, const char *path, const char *newpath)
 {
 	struct fsroot_file *file;
 	char full_newpath[PATH_MAX];
 
-	if (!path || !newpath || !fsroot_fullpath(newpath, full_newpath, sizeof(full_newpath)))
+	if (!fs || !path || !newpath || !fsroot_fullpath(fs->root_path, newpath, full_newpath, sizeof(full_newpath)))
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
-	if (hash_table_contains(files, newpath))
+	if (hash_table_contains(fs->files, newpath))
 		return FSROOT_E_EXISTS;
 
 	if (rename(file->path, full_newpath) == -1)
 		return FSROOT_E_SYSCALL;
 
 	/* TODO maybe these should should be performed atomically */
-	hash_table_remove(files, path);
+	hash_table_remove(fs->files, path);
 
 	file->path = mm_realloc((void *) file->path, strlen(full_newpath) + 1);
 	strcpy((char *) file->path, full_newpath);
-	hash_table_put(files, strdup(newpath), file);
+	hash_table_put(fs->files, strdup(newpath), file);
 
 	return FSROOT_OK;
 }
@@ -1164,15 +1161,15 @@ int fsroot_rename(const char *path, const char *newpath)
  *
  * If the file \p path does not exist, `FSROOT_E_NOTEXISTS` is returned.
  */
-int fsroot_chmod(const char *path, mode_t mode)
+int fsroot_chmod(fsroot_t *fs, const char *path, mode_t mode)
 {
 	struct fsroot_file *file;
 	mode_t filetype = mode & S_IFMT;
 
-	if (!path || !filetype)
+	if (!fs || !path || !filetype)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
@@ -1197,14 +1194,14 @@ int fsroot_chmod(const char *path, mode_t mode)
  *
  * If the file \p path does not exist, `FSROOT_E_NOTEXISTS` is returned.
  */
-int fsroot_chown(const char *path, uid_t uid, gid_t gid)
+int fsroot_chown(fsroot_t *fs, const char *path, uid_t uid, gid_t gid)
 {
 	struct fsroot_file *file;
 
-	if (!path)
+	if (!fs || !path)
 		return FSROOT_E_BADARGS;
 
-	file = hash_table_get(files, path);
+	file = hash_table_get(fs->files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
 
@@ -1214,6 +1211,7 @@ int fsroot_chown(const char *path, uid_t uid, gid_t gid)
 }
 
 struct fsroot_opendir_handle {
+	fsroot_t *fs;
 	DIR *dp;
 	char *last_dir;
 	char *prefix;
@@ -1223,7 +1221,7 @@ struct fsroot_opendir_handle {
  * We return a 'fsroot_file' to the user rather than a 'fsroot_directory', because
  * we do not want them to tinker with the directory's fields, such as num_entries.
  */
-int fsroot_opendir(const char *path, void **outdir, int *error)
+int fsroot_opendir(fsroot_t *fs, const char *path, void **outdir, int *error)
 {
 	struct fsroot_opendir_handle *h;
 	struct fsroot_file *dir;
@@ -1231,16 +1229,17 @@ int fsroot_opendir(const char *path, void **outdir, int *error)
 	int retval;
 	DIR *dp;
 
-	if (!path || !outdir || !fsroot_fullpath(path, fullpath, sizeof(fullpath)))
+	if (!fs || !path || !outdir || !fsroot_fullpath(fs->root_path, path, fullpath, sizeof(fullpath)))
 		return FSROOT_E_BADARGS;
 
 	dp = opendir(fullpath);
 	if (!dp)
 		return FSROOT_E_SYSCALL;
 
-	dir = hash_table_get(files, path);
+	dir = hash_table_get(fs->files, path);
 	if (dir && S_ISDIR(dir->mode)) {
 		h = mm_new0(struct fsroot_opendir_handle);
+		h->fs = fs;
 		h->dp = dp;
 		h->prefix = strdup(path);
 		*outdir = h;
@@ -1281,7 +1280,7 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 		else
 			snprintf(path, sizeof(path), "/%s", de->d_name);
 
-		if (hash_table_contains(files, path)) {
+		if (hash_table_contains(h->fs->files, path)) {
 			fprintf(stderr, "fsroot_readdir: Found path '%s'\n", path);
 			break;
 		} else {
@@ -1334,32 +1333,153 @@ void fsroot_closedir(void **dir)
 	}
 }
 
-void fsroot_deinit()
+static void __fsroot_deinit(fsroot_t *fs)
 {
 	hash_table_iterator iter;
-	pthread_rwlock_wrlock(&open_files.rwlock);
 
-	for (unsigned int i = 0; i < open_files.num_files; i++)
-		mm_free(open_files.file_descriptors[i]);
+	pthread_rwlock_wrlock(&fs->open_files.rwlock);
 
-	mm_free(open_files.file_descriptors);
-	open_files.num_slots = 0;
-	open_files.num_files = 0;
+	for (unsigned int i = 0; i < fs->open_files.num_files; i++)
+		mm_free(fs->open_files.file_descriptors[i]);
 
-	if (files) {
-		for (hash_table_iterate(files, &iter); hash_table_iter_next(&iter);) {
-			__fsroot_release(iter.value, 0);
-	//		hash_table_remove(files, iter.key);
+	mm_free(fs->open_files.file_descriptors);
+	fs->open_files.num_slots = 0;
+	fs->open_files.num_files = 0;
+
+	if (fs->files) {
+		for (hash_table_iterate(fs->files, &iter); hash_table_iter_next(&iter);) {
+			__fsroot_release(&fs->open_files, iter.value, 0);
+	//		hash_table_remove(fs->files, iter.key);
 			if (((struct fsroot_file *) iter.value)->path)
 				mm_free(((struct fsroot_file *) iter.value)->path);
 			mm_free(iter.value);
 		}
 
-		hash_table_destroy(files);
+		hash_table_destroy(fs->files);
 	}
 
-	pthread_rwlock_unlock(&open_files.rwlock);
-	pthread_rwlock_destroy(&open_files.rwlock);
+	pthread_rwlock_unlock(&fs->open_files.rwlock);
+	pthread_rwlock_destroy(&fs->open_files.rwlock);
+}
+
+void fsroot_deinit(fsroot_t **fs)
+{
+	if (fs && *fs) {
+		__fsroot_deinit(*fs);
+		mm_free((*fs)->database_file);
+		mm_free(*fs);
+	}
+}
+
+/**
+ * \param[in] filename Path to a file (absolute or relative)
+ * \return `FSROOT_OK` on success, or an `FSROOT_E_*` negative value on error
+ *
+ * Save file metadata to disk.
+ *
+ * The metadata is basically a list of files attached to a `stat`-like
+ * data structure that contains the file permissions and owner.
+ *
+ * If the specified file already exists, fsroot_persist() will try to delete it
+ * before creating a new one. If it can't delete the file, `FSROOT_E_EXISTS` will be returned.
+ *
+ * The file metadata is kept in memory while FSRoot is running.
+ *
+ * Please note that calling fsroot_deinit() will cause all that metadata to be deleted and
+ * will be lost unless fsroot_persist() has been called before.
+ */
+int fsroot_persist(fsroot_t *fs, const char *filename)
+{
+	int retval;
+	fsroot_db_t *db;
+	hash_table_iterator iter;
+
+	if (!fs || !filename || !*filename)
+		return FSROOT_E_BADARGS;
+
+	retval = fsroot_db_create(filename);
+	if (retval == FSROOT_E_EXISTS) {
+		/*
+		 * Database file already exists.
+		 * Try to delete it and call fsroot_db_create() again.
+		 */
+		if (unlink(filename) == -1)
+			return FSROOT_E_EXISTS;
+
+		retval = fsroot_db_create(filename);
+	}
+	if (retval != FSROOT_OK)
+		return retval;
+
+	retval = fsroot_db_open(filename, &db);
+	if (retval != FSROOT_OK)
+		return retval;
+
+	/* We lock the files exclusively while we dump them to the DB */
+	pthread_rwlock_wrlock(&fs->open_files.rwlock);
+	for (hash_table_iterate(fs->files, &iter); hash_table_iter_next(&iter);) {
+		const char *path = iter.key;
+		struct fsroot_file *file = iter.value;
+
+		/* Skip the root dir */
+		if (strcmp(path, "/"))
+			fsroot_db_add_file_entry(db, path, file);
+	}
+	pthread_rwlock_unlock(&fs->open_files.rwlock);
+
+	return fsroot_db_close(&db);
+}
+
+/*
+ * \param[in] filename An absolute path
+ * \return `FSROOT_OK` if the database file path was successfully changed or a negative error code otherwise
+ *
+ * Sets the file where the filesystem information will be saved.
+ *
+ * An empty or NULL value for \p filename disables persistence at all.
+ * This means that all the filesystem information will be lost after calling fsroot_deinit().
+ *
+ * The length of the \p filename argument must not be greater than `PATH_MAX`.
+ */
+int fsroot_set_database_file(fsroot_t *fs, const char *filename)
+{
+	if (!fs)
+		return FSROOT_E_BADARGS;
+
+	if (!filename || !*filename) {
+		if (fs->database_file)
+			mm_free(fs->database_file);
+	} else {
+		if (strlen(filename) > PATH_MAX)
+			return FSROOT_E_NOMEM;
+		fs->database_file = strdup(filename);
+	}
+
+	return FSROOT_OK;
+}
+
+/**
+ * \param[in] root Root folder where fsroot will store its files internally
+ * \return `FSROOT_OK` on success or a negative integer on error
+ *
+ * If \p dir is NULL or empty `FSROOT_E_BADARGS` is returned.
+ *
+ * The length of the string \p root should be no greater than `PATH_MAX`, or
+ * `FSROOT_E_NOMEM` is returned.
+ */
+int fsroot_set_root_directory(fsroot_t *fs, const char *dir)
+{
+	size_t root_path_len = 0;
+
+	if (!fs || !dir || !*dir)
+		return FSROOT_E_BADARGS;
+
+	root_path_len = strlen(dir);
+	if (root_path_len > PATH_MAX)
+		return FSROOT_E_NOMEM;
+
+	strcpy(fs->root_path, dir);
+	return FSROOT_OK;
 }
 
 /**
@@ -1371,42 +1491,141 @@ void fsroot_deinit()
  * The length of the string \p root should be no greater than `PATH_MAX`, or
  * `FSROOT_E_NOMEM` is returned.
  */
-int fsroot_init(const char *root, uid_t root_uid, gid_t root_gid, mode_t root_mode) {
-	struct fsroot_file *root_dir = NULL;
+int fsroot_init(fsroot_t **fs)
+{
+	fsroot_t *fsroot = NULL;
 
-	files = NULL;
-	memset(&open_files, 0, sizeof(open_files));
-	if (!root)
+	if (!fs)
 		return FSROOT_E_BADARGS;
 
+	/* Initialize the fsroot handle */
+	*fs = mm_new0(fsroot_t);
+	fsroot = *fs;
+	fsroot->files = NULL;
+	memset(&fsroot->open_files, 0, sizeof(fsroot->open_files));
+
 	/* TODO how do we balance the space? (eg. Android) */
-	files = make_string_hash_table(10);
+	fsroot->files = make_string_hash_table(10);
 
-	open_files.num_files = 0;
-	open_files.num_slots = OPEN_FILES_INITIAL_NUM_SLOTS;
-	open_files.file_descriptors = mm_mallocn0(open_files.num_slots,
+	fsroot->open_files.num_files = 0;
+	fsroot->open_files.num_slots = OPEN_FILES_INITIAL_NUM_SLOTS;
+	fsroot->open_files.file_descriptors = mm_mallocn0(fsroot->open_files.num_slots,
 			sizeof(struct fsroot_file_descriptor*));
-	pthread_rwlock_init(&open_files.rwlock, NULL);
-	root_path_len = strlen(root);
-	if (root_path_len > sizeof(root_path) - 1)
-		goto error_nomem;
+	pthread_rwlock_init(&fsroot->open_files.rwlock, NULL);
 
-	strcpy(root_path, root);
+	return FSROOT_OK;
+}
+
+static int check_root_dir_is_empty(fsroot_t *fs)
+{
+	int finish = 0,
+		errno_saved = errno,
+		retval = FSROOT_E_UNKNOWN;
+	struct dirent *de;
+	DIR *dp = opendir(fs->root_path);
+
+	if (!dp) {
+		if (errno == ENOENT)
+			return FSROOT_E_NOTEXISTS;
+		else if (errno == ENOTDIR)
+			return FSROOT_E_NOT_DIRECTORY;
+		else
+			return FSROOT_E_SYSCALL;
+	}
+
+	while (!finish) {
+		de = readdir(dp);
+
+		if (de && strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
+			finish = 1;
+			retval = FSROOT_E_NOTEMPTY;
+		} else if (!de) {
+			finish = 1;
+			/*
+			 * If errno didn't change it simply means there are no more entries
+			 * in this directory
+			 */
+			retval = (errno_saved == errno ?
+				  FSROOT_OK :
+				  FSROOT_E_SYSCALL);
+		}
+	}
+
+	closedir(dp);
+	return retval;
+}
+
+static int load_from_database(fsroot_t *fs, fsroot_db_t *db)
+{
+	int retval = FSROOT_E_UNKNOWN;
+	fsroot_db_iter_t *it = NULL;
+	char *filename = NULL;
+	struct fsroot_file file, *pfile;
+
+	retval = fsroot_db_iter_init(&it, db);
+	if (retval != FSROOT_OK)
+		return retval;
+
+	do {
+		retval = fsroot_db_iter_next(it, &filename, &file);
+
+		if (retval == FSROOT_OK) {
+			pfile = fsroot_create_file(fs,
+					filename,
+					file.uid,
+					file.gid,
+					file.mode);
+			if (pfile)
+				hash_table_put(fs->files, filename, pfile);
+		}
+	} while (retval == FSROOT_OK);
+
+	fsroot_db_iter_deinit(&it);
+	return (retval == FSROOT_NOMORE ?
+		FSROOT_OK :
+		retval);
+}
+
+int fsroot_start(fsroot_t *fs, uid_t root_uid, gid_t root_gid, mode_t root_mode)
+{
+	int retval = FSROOT_OK;
+	struct stat st;
+	struct fsroot_file *root_dir = NULL;
+	fsroot_db_t *db = NULL;
 
 	/* Initialize the root directory */
+	if (!fs->root_path[0])
+		return FSROOT_E_BADARGS;
+	if (stat(fs->root_path, &st) == -1 || !S_ISDIR(st.st_mode))
+		return FSROOT_E_NOT_DIRECTORY;
+
 	if (!S_ISDIR(root_mode))
 		return FSROOT_E_BADARGS;
 
 	root_dir = mm_new0(struct fsroot_file);
-	root_dir->path = strdup(root);
+	root_dir->path = strdup(fs->root_path);
 	root_dir->uid = root_uid;
 	root_dir->gid = root_gid;
 	root_dir->mode = root_mode;
-	hash_table_put(files, "/", root_dir);
+	hash_table_put(fs->files, "/", root_dir);
 
-	return FSROOT_OK;
+	/*
+	 * Initialize the filesystem from the database.
+	 * If no database was provided then it will be empty (no files, other
+	 * than the root directory).
+	 */
+	if (fs->database_file) {
+		if (fsroot_db_create(fs->database_file) == FSROOT_E_EXISTS) {
+			if (fsroot_db_open(fs->database_file, &db) == FSROOT_OK) {
+				load_from_database(fs, db);
+				fsroot_db_close(&db);
+			} else {
+				retval = FSROOT_E_NODB;
+			}
+		}
+	}
 
-error_nomem:
-	fsroot_deinit();
-	return FSROOT_E_NOMEM;
+	return retval;
 }
+
+/** @} */

@@ -8,51 +8,39 @@
 #define FSROOT_H_
 #include <linux/limits.h>
 #include <sys/types.h>
+#include "fsroot-return-codes.h"
 
-#define FSROOT_NOMORE		 1
-#define FSROOT_OK		 0
-#define FSROOT_E_BADARGS	-1
-#define FSROOT_E_EXISTS		-2
-#define FSROOT_E_NOTEXISTS	-3
-#define FSROOT_E_NOMEM		-4
-#define FSROOT_E_SYSCALL	-5
-#define FSROOT_EOF		-6
-#define FSROOT_E_NOTOPEN	-7
-#define FSROOT_E_NOTFOUND	-8
-#define FSROOT_E_UNKNOWN	-9
+struct _fsroot_st;
+typedef struct _fsroot_st fsroot_t;
 
-/**
- * \param[in] root Root folder where fsroot will store its files internally
- * \return `FSROOT_OK` on success or a negative integer on error
- *
- * Initialize the fsroot environment.
- *
- * The length of the string \p root should be no greater than `PATH_MAX`, or
- * `FSROOT_E_NOMEM` is returned.
- */
-int fsroot_init(const char *root, uid_t root_uid, gid_t root_gid, mode_t root_mode);
-void fsroot_deinit(void);
+int fsroot_init(fsroot_t **);
+void fsroot_deinit(fsroot_t **);
+int fsroot_start(fsroot_t *, uid_t, gid_t, mode_t);
+int fsroot_persist(fsroot_t *, const char *filename);
 
-int fsroot_create(const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out);
-int fsroot_open(const char *path, int flags);
-int fsroot_read(int fd, char *buf, size_t size, off_t offset, int *error_out);
-int fsroot_write(int fd, const char *buf, size_t size, off_t offset, int *error_out);
-int fsroot_sync(const char *path);
-int fsroot_release(const char *path);
+int fsroot_set_root_directory(fsroot_t *, const char *);
+int fsroot_set_database_file(fsroot_t *, const char *);
 
-int fsroot_getattr(const char *path, struct stat *out_st);
+int fsroot_create(fsroot_t *, const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out);
+int fsroot_open(fsroot_t *, const char *path, int flags);
+int fsroot_read(fsroot_t *, int fd, char *buf, size_t size, off_t offset, int *error_out);
+int fsroot_write(fsroot_t *, int fd, const char *buf, size_t size, off_t offset, int *error_out);
+int fsroot_sync(fsroot_t *, const char *path);
+int fsroot_release(fsroot_t *, const char *path);
 
-int fsroot_symlink(const char *linkpath, const char *target, uid_t uid, gid_t gid, mode_t mode);
-int fsroot_readlink(const char *linkpath, char *dst, size_t *dstlen);
+int fsroot_getattr(fsroot_t *, const char *path, struct stat *out_st);
 
-int fsroot_mkdir(const char *path, uid_t uid, gid_t gid, mode_t mode);
-int fsroot_rmdir(const char *path);
+int fsroot_symlink(fsroot_t *, const char *linkpath, const char *target, uid_t uid, gid_t gid, mode_t mode);
+int fsroot_readlink(fsroot_t *, const char *linkpath, char *dst, size_t *dstlen);
 
-int fsroot_rename(const char *path, const char *newpath);
-int fsroot_chmod(const char *path, mode_t mode);
-int fsroot_chown(const char *path, uid_t uid, gid_t gid);
+int fsroot_mkdir(fsroot_t *, const char *path, uid_t uid, gid_t gid, mode_t mode);
+int fsroot_rmdir(fsroot_t *, const char *path);
 
-int fsroot_opendir(const char *path, void **outdir, int *error);
+int fsroot_rename(fsroot_t *, const char *path, const char *newpath);
+int fsroot_chmod(fsroot_t *, const char *path, mode_t mode);
+int fsroot_chown(fsroot_t *, const char *path, uid_t uid, gid_t gid);
+
+int fsroot_opendir(fsroot_t *, const char *path, void **outdir, int *error);
 int fsroot_readdir(void *dir, char *out, size_t outlen, int *err);
 void fsroot_closedir(void **dir);
 

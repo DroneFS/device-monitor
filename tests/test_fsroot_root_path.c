@@ -10,53 +10,68 @@ char dir[] = "fsroot-root";
 
 START_TEST(test_fsroot_root_path_mkdir_failure)
 {
+	fsroot_t *fs;
 	int retval;
 
-	retval = fsroot_init(dir, 1000, 1000, 0040754);
+	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
-	retval = fsroot_mkdir("/", 1000, 1000, 0040700);
+	fsroot_set_root_directory(fs, dir);
+	retval = fsroot_start(fs, 1000, 1000, 0040754);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+
+	retval = fsroot_mkdir(fs, "/", 1000, 1000, 0040700);
 	ck_assert_msg(retval == FSROOT_E_EXISTS, "fsroot_mkdir(\"/\") returned %d (should return %d)\n",
 			retval, FSROOT_E_EXISTS);
 
-	fsroot_deinit();
+	fsroot_deinit(&fs);
 }
 END_TEST
 
 START_TEST(test_fsroot_root_path_getattr)
 {
+	fsroot_t *fs;
 	int retval;
 	struct stat st;
 
-	retval = fsroot_init(dir, 1000, 1000, 0040754);
+	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
-	retval = fsroot_getattr("/", &st);
+	fsroot_set_root_directory(fs, dir);
+	retval = fsroot_start(fs, 1000, 1000, 0040754);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+
+	retval = fsroot_getattr(fs, "/", &st);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"/\") returned %d\n", retval);
 	ck_assert_int_eq(st.st_uid, 1000);
 	ck_assert_int_eq(st.st_gid, 1000);
 	ck_assert_int_eq(st.st_mode, 0040754);
 	ck_assert(S_ISDIR(st.st_mode));
 
-	fsroot_deinit();
+	fsroot_deinit(&fs);
 }
 END_TEST
 
 START_TEST(test_fsroot_root_path_rmdir)
 {
+	fsroot_t *fs;
 	int retval;
 
-	retval = fsroot_init(dir, 1000, 1000, 0040754);
+	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
-	retval = fsroot_rmdir("/");
+	fsroot_set_root_directory(fs, dir);
+	retval = fsroot_start(fs, 1000, 1000, 0040754);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+
+	retval = fsroot_rmdir(fs, "/");
 	ck_assert_msg(retval == FSROOT_E_BADARGS, "fsroot_rmdir(\"/\") returned %d (should return %d)\n",
 			retval, FSROOT_E_BADARGS);
 
-	fsroot_deinit();
+	fsroot_deinit(&fs);
 }
 END_TEST
 

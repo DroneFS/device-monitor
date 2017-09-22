@@ -29,51 +29,61 @@ void check_symlink(const char *path, const char *target)
 
 START_TEST(test_fsroot_symlink)
 {
+	fsroot_t *fs;
 	int retval;
 	char path[PATH_MAX];
 
-	retval = fsroot_init(dir, 1000, 1000, 0040754);
+	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
-	retval = fsroot_symlink("foo", "foo-target", 1000, 1000, 0120600);
+	fsroot_set_root_directory(fs, dir);
+	retval = fsroot_start(fs, 1000, 1000, 0040754);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+
+	retval = fsroot_symlink(fs, "foo", "foo-target", 1000, 1000, 0120600);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_symlink(\"foo\") returned %d\n", retval);
 	ck_assert(snprintf(path, sizeof(path), "%s/foo", dir) > 0);
 	check_symlink(path, "foo-target");
 
 	memset(path, 0, sizeof(path));
-	retval = fsroot_symlink("bar", "bar-target", 1000, 1000, 0120600);
+	retval = fsroot_symlink(fs, "bar", "bar-target", 1000, 1000, 0120600);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_symlink(\"bar\") returned %d\n", retval);
 	ck_assert(snprintf(path, sizeof(path), "%s/bar", dir) > 0);
 	check_symlink(path, "bar-target");
 
 	memset(path, 0, sizeof(path));
-	retval = fsroot_symlink("foo2", "foo-target", 1000, 1000, 0120600);
+	retval = fsroot_symlink(fs, "foo2", "foo-target", 1000, 1000, 0120600);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_symlink(\"foo2\") returned %d\n", retval);
 	ck_assert(snprintf(path, sizeof(path), "%s/foo2", dir) > 0);
 	check_symlink(path, "foo-target");
 
-	fsroot_deinit();
+	fsroot_deinit(&fs);
 }
 END_TEST
 
 START_TEST(test_fsroot_readlink)
 {
+	fsroot_t *fs;
 	int retval;
 	char target[PATH_MAX];
 	size_t len = sizeof(target);
 
-	retval = fsroot_init(dir, 1000, 1000, 0040754);
+	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
-	retval = fsroot_symlink("a", "asdfasdf", 1000, 1000, 0120600);
+	fsroot_set_root_directory(fs, dir);
+	retval = fsroot_start(fs, 1000, 1000, 0040754);
+	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+
+	retval = fsroot_symlink(fs, "a", "asdfasdf", 1000, 1000, 0120600);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_symlink(\"a\") returned %d\n", retval);
 
-	retval = fsroot_readlink("a", target, &len);
+	retval = fsroot_readlink(fs, "a", target, &len);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_readlink(\"a\") returned %d\n", retval);
 	ck_assert_int_eq(len, sizeof(target));
 	ck_assert_str_eq(target, "asdfasdf");
 
-	fsroot_deinit();
+	fsroot_deinit(&fs);
 }
 END_TEST
 

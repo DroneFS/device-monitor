@@ -18,6 +18,24 @@ AC_PROG_LIBTOOL
 
 LT_INIT
 
+#
+# Check for Doxygen (unless docs disbled by user)
+#
+AC_ARG_ENABLE(doc, AS_HELP_STRING([--disable-doc], [Do not generate Doxygen docs]),
+  enable_doc=$enableval, enable_doc=yes)
+if test "$enable_doc" == "yes"; then
+  AC_CHECK_PROGS([DOXYGEN], [doxygen])
+  AS_IF([test "$DOXYGEN" == "doxygen"], [
+    AC_CONFIG_FILES([docs/Makefile docs/device-monitor.doxy])
+    AC_SUBST([DOCS_FOLDER], [docs])
+    DOCS="Yes. Doxygen docs will be generated"
+  ], [
+    DOCS="No. Doxygen docs were requested but 'doxygen' executable was not found"
+  ])
+else
+  DOCS="No. Doxygen docs were disabled"
+fi
+
 AC_OUTPUT
 
 echo
@@ -28,4 +46,5 @@ if ! test -d "$prefix"; then
 else
   echo " (OK)"
 fi
+echo "Docs: $DOCS"
 echo

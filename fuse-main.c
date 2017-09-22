@@ -48,21 +48,52 @@ struct {
 	gid_t gid;
 } root_info;
 
+static fsroot_t *__get_fsroot_ctx()
+{
+	struct fuse_context *fctx = fuse_get_context();
+
+	if (fctx)
+		return (fsroot_t *) fctx->private_data;
+	else
+		return NULL;
+}
+
 static void *dm_fuse_init(struct fuse_conn_info *conn)
 {
+	fsroot_t *fsroot;
 	printf("DroneFS device monitor. Written by Ander Juaristi.\n");
 
-	if (fsroot_init(root_path, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754) != FSROOT_OK) {
+	if (fsroot_init(&fsroot) != FSROOT_OK) {
 		fprintf(stderr, "ERROR: Could not initialize fsroot\n");
 		exit(EXIT_FAILURE);
 	}
 
-	return NULL;
+	if (fsroot_set_root_directory(fsroot, root_path) != FSROOT_OK) {
+		fprintf(stderr, "ERROR: Could not set root directory\n");
+		fsroot_deinit(&fsroot);
+		exit(EXIT_FAILURE);
+	}
+
+	if (fsroot_start(fsroot, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754) != FSROOT_OK) {
+		fprintf(stderr, "ERROR: Could not start fsroot\n");
+		fsroot_deinit(&fsroot);
+		exit(EXIT_FAILURE);
+	}
+
+	return fsroot;
 }
 
 static void dm_fuse_destroy(void *v)
 {
-	fsroot_deinit();
+	fsroot_t *fs = (fsroot_t *) v;
+	int retval = fsroot_persist(fs, "fsroot.db");
+
+	if (retval != FSROOT_OK) {
+		fprintf(stderr, "ERROR: Could not store FSRoot state at file 'fsroot.db'"
+			"Error code: %d", retval);
+	}
+
+	fsroot_deinit(&fs);
 }
 
 /*
@@ -70,14 +101,15 @@ static void dm_fuse_destroy(void *v)
  */
 static int dm_fuse_getattr(const char *path, struct stat *st)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 
-	if (!path || !st)
+	if (!path || !st || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 
-	switch (fsroot_getattr(path, st)) {
+	switch (fsroot_getattr(fs, path, st)) {
 	case FSROOT_E_BADARGS:
 		retval = -EFAULT;
 		break;
@@ -103,6 +135,7 @@ static int dm_fuse_getattr(const char *path, struct stat *st)
  */
 static int dm_fuse_mknod(const char *path, mode_t mode, dev_t dev)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT, err = 0;
 	struct fuse_context *fctx;
 
@@ -114,13 +147,13 @@ static int dm_fuse_mknod(const char *path, mode_t mode, dev_t dev)
 		return -EACCES;
 
 	fctx = fuse_get_context();
-	if (!fctx)
+	if (!fctx || !(fs = (fsroot_t *) fctx->private_data))
 		return -EFAULT;
 
-	retval = fsroot_create(path, fctx->uid, fctx->gid, mode, 0, &err);
+	retval = fsroot_create(fs, path, fctx->uid, fctx->gid, mode, 0, &err);
 
 	if (retval >= 0) {
-		retval = fsroot_release(path);
+		retval = fsroot_release(fs, path);
 //		retval = 0;
 		goto end;
 	}
@@ -151,6 +184,7 @@ end:
  */
 static int dm_fuse_symlink(const char *path, const char *link)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 	struct fuse_context *fctx;
 
@@ -160,10 +194,10 @@ static int dm_fuse_symlink(const char *path, const char *link)
 		return -ENOENT;
 
 	fctx = fuse_get_context();
-	if (!fctx)
+	if (!fctx || !(fs = (fsroot_t *) fctx->private_data))
 		return -EFAULT;
 
-	retval = fsroot_symlink(link, path, fctx->uid, fctx->gid, 0120600);
+	retval = fsroot_symlink(fs, link, path, fctx->uid, fctx->gid, 0120600);
 
 	switch (retval) {
 	case FSROOT_OK:
@@ -190,17 +224,18 @@ static int dm_fuse_symlink(const char *path, const char *link)
 
 static int dm_fuse_readlink(const char *path, char *buf, size_t buflen)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 	char *tmpbuf = NULL;
 	size_t buflen_required = 0;
 
-	if (!path || !buf)
+	if (!path || !buf || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 
 	buflen_required = buflen;
-	retval = fsroot_readlink(path, buf, &buflen_required);
+	retval = fsroot_readlink(fs, path, buf, &buflen_required);
 
 	if (retval == FSROOT_E_NOMEM) {
 		/* buflen_required now contains the minimum amount */
@@ -208,7 +243,7 @@ static int dm_fuse_readlink(const char *path, char *buf, size_t buflen)
 		if (!tmpbuf)
 			return -EFAULT;
 
-		retval = fsroot_readlink(path, tmpbuf, &buflen_required);
+		retval = fsroot_readlink(fs, path, tmpbuf, &buflen_required);
 	}
 
 	if (retval == FSROOT_OK) {
@@ -238,6 +273,7 @@ static int dm_fuse_readlink(const char *path, char *buf, size_t buflen)
  */
 static int dm_fuse_mkdir(const char *path, mode_t mode)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 	struct fuse_context *fctx;
 
@@ -247,10 +283,10 @@ static int dm_fuse_mkdir(const char *path, mode_t mode)
 		return -ENOENT;
 
 	fctx = fuse_get_context();
-	if (!fctx)
+	if (!fctx || !(fs = (fsroot_t *) fctx->private_data))
 		return -EFAULT;
 
-	retval = fsroot_mkdir(path, fctx->uid, fctx->gid, 0040000 | mode);
+	retval = fsroot_mkdir(fs, path, fctx->uid, fctx->gid, 0040000 | mode);
 
 	switch (retval) {
 	case FSROOT_OK:
@@ -283,14 +319,15 @@ static int dm_fuse_unlink(const char *path)
  */
 static int dm_fuse_rmdir(const char *path)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 
-	if (!path)
+	if (!path || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 
-	switch (fsroot_rmdir(path)) {
+	switch (fsroot_rmdir(fs, path)) {
 	case FSROOT_OK:
 		retval = 0;
 		break;
@@ -318,14 +355,15 @@ static int dm_fuse_rmdir(const char *path)
  */
 static int dm_fuse_rename(const char *path, const char *newpath)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 
-	if (!path || !newpath)
+	if (!path || !newpath || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path || !*newpath)
 		return -ENOENT;
 
-	retval = fsroot_rename(path, newpath);
+	retval = fsroot_rename(fs, path, newpath);
 
 	switch (retval) {
 	case FSROOT_OK:
@@ -352,14 +390,15 @@ static int dm_fuse_rename(const char *path, const char *newpath)
  */
 static int dm_fuse_chmod(const char *path, mode_t mode)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 
-	if (!path)
+	if (!path || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 
-	retval = fsroot_chmod(path, mode);
+	retval = fsroot_chmod(fs, path, mode);
 
 	switch (retval) {
 	case FSROOT_OK:
@@ -382,14 +421,15 @@ static int dm_fuse_chmod(const char *path, mode_t mode)
  */
 static int dm_fuse_chown(const char *path, uid_t uid, gid_t gid)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 
-	if (!path)
+	if (!path || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 
-	switch (fsroot_chown(path, uid, gid)) {
+	switch (fsroot_chown(fs, path, uid, gid)) {
 	case FSROOT_OK:
 		retval = 0;
 		break;
@@ -423,14 +463,15 @@ static int dm_fuse_truncate(const char *path, off_t newsize, struct fuse_file_in
  */
 static int dm_fuse_open(const char *path, struct fuse_file_info *fi)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT;
 
-	if (!path)
+	if (!path || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 
-	retval = fsroot_open(path, fi->flags);
+	retval = fsroot_open(fs, path, fi->flags);
 
 	if (retval >= 0) {
 		/* Open succeeded and we've got a file descriptor */
@@ -455,9 +496,14 @@ end:
 
 static int dm_fuse_release(const char *path, struct fuse_file_info *fi)
 {
+	fsroot_t *fs = __get_fsroot_ctx();
+
+	if (!fs)
+		return -EFAULT;
+
 	/* FUSE ignores the return value of this function, and so do we */
 	if (path)
-		fsroot_release(path);
+		fsroot_release(fs, path);
 	return 0;
 }
 
@@ -473,15 +519,16 @@ static int dm_fuse_read(const char *path,
 		char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
+	fsroot_t *fs;
 	int retval = -EINVAL, err = 0;
 
 	/* We don't even bother to check 'path', since we're not using it */
-	if (!buf || !size)
+	if (!buf || !size || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (fi->fh < 0)
 		return -EBADF;
 
-	retval = fsroot_read(fi->fh, buf, size, offset, &err);
+	retval = fsroot_read(fs, fi->fh, buf, size, offset, &err);
 
 	switch (retval) {
 	case FSROOT_E_BADARGS:
@@ -504,14 +551,15 @@ static int dm_fuse_write(const char *path,
 		const char *buf, size_t size, off_t offset,
 		struct fuse_file_info *fi)
 {
+	fsroot_t *fs;
 	int retval = -EINVAL, err = 0;
 
-	if (!buf || !size)
+	if (!buf || !size || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (fi->fh < 0)
 		return -EBADF;
 
-	retval = fsroot_write(fi->fh, buf, size, offset, &err);
+	retval = fsroot_write(fs, fi->fh, buf, size, offset, &err);
 
 	switch (retval) {
 	case FSROOT_E_BADARGS:
@@ -534,17 +582,18 @@ static int dm_fuse_write(const char *path,
  */
 static int dm_fuse_opendir(const char *path, struct fuse_file_info *fi)
 {
+	fsroot_t *fs;
 	int retval = -EFAULT, err = 0;
 	void *dir_handle = NULL;
 
-	if (!path)
+	if (!path || !(fs = __get_fsroot_ctx()))
 		return -EFAULT;
 	if (!*path)
 		return -ENOENT;
 	if (!fi)
 		return -EFAULT;
 
-	switch (fsroot_opendir(path, &dir_handle, &err)) {
+	switch (fsroot_opendir(fs, path, &dir_handle, &err)) {
 	case FSROOT_E_BADARGS:
 		retval = -EFAULT;
 		break;
