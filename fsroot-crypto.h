@@ -10,10 +10,15 @@
 
 struct fsroot_crypto_st
 {
-	char *challenges[5];
-	void *handles[5];
+	size_t num_challenges;
+	size_t num_slots;
+	char **challenges;
+	void **handles;
 };
 typedef struct fsroot_crypto_st fsroot_crypto_t;
+
+void fsroot_crypto_init(fsroot_crypto_t *);
+void fsroot_crypto_deinit(fsroot_crypto_t *);
 
 int fsroot_crypto_load_challenge(fsroot_crypto_t *, const char *);
 int fsroot_crypto_unload_challenge(fsroot_crypto_t *, const char *);

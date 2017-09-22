@@ -1421,7 +1421,7 @@ static void __fsroot_deinit(fsroot_t *fs)
 
 	if (fs->files) {
 		for (hash_table_iterate(fs->files, &iter); hash_table_iter_next(&iter);) {
-			__fsroot_release(&fs->open_files, iter.value, 0);
+			__fsroot_release(fs, iter.value, 0);
 	//		hash_table_remove(fs->files, iter.key);
 			if (((struct fsroot_file *) iter.value)->path)
 				mm_free(((struct fsroot_file *) iter.value)->path);
@@ -1444,6 +1444,7 @@ void fsroot_deinit(fsroot_t **fs)
 		__fsroot_deinit(*fs);
 		mm_free((*fs)->database_file);
 		mm_free(*fs);
+		fsroot_crypto_deinit(&fs_crypto);
 	}
 }
 
@@ -1594,6 +1595,8 @@ int fsroot_init(fsroot_t **fs)
 	fsroot->open_files.file_descriptors = mm_mallocn0(fsroot->open_files.num_slots,
 			sizeof(struct fsroot_file_descriptor*));
 	pthread_rwlock_init(&fsroot->open_files.rwlock, NULL);
+
+	fsroot_crypto_init(&fs_crypto);
 
 	return FSROOT_OK;
 }

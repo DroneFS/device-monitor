@@ -6,6 +6,7 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include <dlfcn.h>
 #include <gcrypt.h>
 #include "fsroot.h"
@@ -152,7 +153,7 @@ static void unload_challenge(fsroot_crypto_t *fsc, unsigned int index)
 	dlclose(fsc->handles[index]);
 
 	/* Bring the others front */
-	for (i = index; i < 4; i++) {
+	for (i = index; i < fsc->num_challenges; i++) {
 		fsc->challenges[i] = fsc->challenges[i + 1];
 		fsc->handles[i] = fsc->handles[i + 1];
 		fsc->challenges[i + 1] = NULL;
@@ -193,7 +194,7 @@ static int fsroot_run_challenges(fsroot_crypto_t *fsc,
 	memset(key, 0, keylen);
 
 	/* Walk over the list of challenges */
-	for (size_t i = 0; i < 5; i++) {
+	for (size_t i = 0; i < fsc->num_challenges; i++) {
 		if (fsc->challenges[i]) {
 			tmp_key = get_key_from_challenge(fsc->handles[i]);
 			if (!tmp_key)
@@ -208,6 +209,32 @@ static int fsroot_run_challenges(fsroot_crypto_t *fsc,
 	return f(in, in_len, out, out_len, key, keylen, iv, ivlen);
 }
 
+#define INITIAL_SLOTS 5
+
+void fsroot_crypto_init(fsroot_crypto_t *fsc)
+{
+	fsc->num_challenges = 0;
+	fsc->num_slots = INITIAL_SLOTS;
+	fsc->challenges = mm_new(INITIAL_SLOTS, char *);
+	fsc->handles = mm_new(INITIAL_SLOTS, void *);
+}
+
+void fsroot_crypto_deinit(fsroot_crypto_t *fsc)
+{
+	fsc->num_challenges = 0;
+	fsc->num_slots = 0;
+	mm_free(fsc->challenges);
+	mm_free(fsc->handles);
+}
+
+static void resize_slots(fsroot_crypto_t *fsc)
+{
+	size_t num_slots = fsc->num_slots << 1;
+	mm_realloc(fsc->challenges, num_slots);
+	mm_realloc(fsc->handles, num_slots);
+	fsc->num_slots = num_slots;
+}
+
 int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 {
 	/* 'FSROOT_E_NOMEM' means we reached the maximum number challenges allowed (currently 5) */
@@ -216,7 +243,13 @@ int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 	if (!fsc || !libch || !*libch)
 		return FSROOT_E_BADARGS;
 
-	for (size_t i = 0; i < 5; i++) {
+	if (fsc->num_slots == fsc->num_challenges) {
+		if ((fsc->num_slots + 1) >= SIZE_MAX)
+			return FSROOT_E_NOMEM;
+		resize_slots(fsc);
+	}
+
+	for (size_t i = 0; i < fsc->num_slots; i++) {
 		if (fsc->challenges[i] && strcmp(fsc->challenges[i], libch) == 0) {
 			/* This challenge is already loaded */
 			retval = FSROOT_OK;
@@ -224,6 +257,8 @@ int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 		} else if (fsc->challenges[i] == NULL) {
 			/* We load this challenge at the designated index */
 			retval = load_challenge(fsc, libch, i);
+			if (retval == FSROOT_OK)
+				fsc->num_challenges++;
 			break;
 		}
 	}
@@ -235,9 +270,10 @@ int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
 {
 	int retval = FSROOT_E_NOTFOUND;
 
-	for (size_t i = 0; i < 5 && fsc->challenges[i]; i++) {
+	for (size_t i = 0; i < fsc->num_slots && fsc->challenges[i]; i++) {
 		if (strcmp(fsc->challenges[i], libch) == 0) {
 			unload_challenge(fsc, i);
+			fsc->num_challenges--;
 			retval = FSROOT_OK;
 			break;
 		}
