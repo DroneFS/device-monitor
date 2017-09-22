@@ -42,6 +42,7 @@
 #include "fsroot.h"
 
 static char root_path[PATH_MAX];
+static char config_file[PATH_MAX];
 static unsigned int root_path_len;
 struct {
 	uid_t uid;
@@ -70,6 +71,12 @@ static void *dm_fuse_init(struct fuse_conn_info *conn)
 
 	if (fsroot_set_root_directory(fsroot, root_path) != FSROOT_OK) {
 		fprintf(stderr, "ERROR: Could not set root directory\n");
+		fsroot_deinit(&fsroot);
+		exit(EXIT_FAILURE);
+	}
+
+	if (fsroot_set_config_file(fsroot, config_file) != FSROOT_OK) {
+		fprintf(stderr, "ERROR: Could not set config file\n");
 		fsroot_deinit(&fsroot);
 		exit(EXIT_FAILURE);
 	}
@@ -686,7 +693,7 @@ static int dm_fuse_access(const char *path, int mask)
 
 void print_help(const char *program_name)
 {
-	printf("Usage: %s <mount point> <root dir>\n", program_name);
+	printf("Usage: %s <mount point> <root dir> <config file>\n", program_name);
 }
 
 int main(int argc, char **argv)
@@ -724,8 +731,12 @@ int main(int argc, char **argv)
 		FUSE_OPT_END
 	};
 
-	if (argc < 3)
+	if (argc < 4)
 		goto help;
+
+	/* This is the config file */
+	argc--;
+	strcpy(config_file, argv[argc]);
 
 	/*
 	 * The last argument should be the root directory.

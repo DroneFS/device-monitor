@@ -21,6 +21,7 @@
 #include "fsroot-internal.h"
 #include "fsroot-db.h"
 #include "fsroot-crypto.h"
+#include "fsroot-config.h"
 #include "hash.h"
 #include "mm.h"
 
@@ -48,6 +49,7 @@ struct fsroot_open_files {
 
 struct _fsroot_st
 {
+	config_t *c;
 	char root_path[PATH_MAX + 1];
 	char *database_file;
 	struct hash_table *files;
@@ -55,7 +57,8 @@ struct _fsroot_st
 };
 
 fsroot_crypto_t fs_crypto;
-static char challenge[] = "libdch.so";
+
+typedef int (* challenge_loader_fn_t) (fsroot_crypto_t *, const char *);
 
 static int fsroot_fullpath(const char *root_path, const char *in, char *out, size_t outlen)
 {
@@ -92,7 +95,72 @@ static int fsroot_fullpath(const char *root_path, const char *in, char *out, siz
 #undef LAST_CHAR
 }
 
-static int fsroot_create_file_buffer(struct fsroot_file *file, int *error_out)
+static int __config_forward_challenges(config_value_t *it, challenge_loader_fn_t f)
+{
+	int retval;
+	char *chall_name;
+	config_value_t *val = NULL;
+
+	while (config_iterator_next(it, &val) == CONFIG_OK) {
+		if (config_get_as_string(val, &chall_name) == CONFIG_OK) {
+			/* Load the challenge */
+			retval = f(&fs_crypto, chall_name);
+			mm_free(chall_name);
+			if (retval != FSROOT_OK)
+				break;
+		}
+	}
+
+	config_destroy_value(&val);
+	return retval;
+}
+
+static int __config_forward_challenge(config_value_t *val, challenge_loader_fn_t f)
+{
+	int retval = FSROOT_E_UNKNOWN;
+	char *chall_name;
+
+	if (config_get_as_string(val, &chall_name) == CONFIG_OK) {
+		retval = f(&fs_crypto, chall_name);
+		mm_free(chall_name);
+	}
+
+	return retval;
+}
+
+static int forward_challenges(config_t *c, challenge_loader_fn_t f)
+{
+	int retval;
+	config_value_t *val = NULL;
+
+	if (config_get_value(c, &val, "challenges") == CONFIG_OK) {
+		if (config_is_iterator(val))
+			retval = __config_forward_challenges(val, f);
+		else if (config_is_string(val))
+			retval = __config_forward_challenge(val, f);
+		else
+			goto error;
+
+		config_destroy_value(&val);
+	}
+
+	return retval;
+
+error:
+	return FSROOT_E_UNKNOWN;
+}
+
+static int load_challenges(config_t *c)
+{
+	return forward_challenges(c, fsroot_crypto_load_challenge);
+}
+
+static int unload_challenges(config_t *c)
+{
+	return forward_challenges(c, fsroot_crypto_unload_challenge);
+}
+
+static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int *error_out)
 {
 	off_t offset;
 	uint8_t *decrypted = NULL;
@@ -130,8 +198,10 @@ static int fsroot_create_file_buffer(struct fsroot_file *file, int *error_out)
 		goto error;
 
 	/* Load challenges */
-	if (fsroot_crypto_load_challenge(&fs_crypto, challenge) != FSROOT_OK)
+	if (fs->c && load_challenges(fs->c) != FSROOT_OK)
 		goto error;
+//	if (fsroot_crypto_load_challenge(&fs_crypto, challenge) != FSROOT_OK)
+//		goto error;
 
 	if (fsroot_crypto_decrypt_with_challenges(&fs_crypto,
 			(const uint8_t *) file->buf, (size_t) file->buf_len,
@@ -184,7 +254,7 @@ end:
 	return file;
 }
 
-static int fsroot_sync_file(struct fsroot_file *file)
+static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 {
 	int retval = FSROOT_OK, fd;
 	uint8_t *encrypted = NULL;
@@ -201,9 +271,11 @@ static int fsroot_sync_file(struct fsroot_file *file)
 	}
 
 	/* Load challenges */
-	retval = fsroot_crypto_load_challenge(&fs_crypto, challenge);
-	if (retval != FSROOT_OK)
+	if (fs->c && load_challenges(fs->c) != FSROOT_OK)
 		goto end;
+//	retval = fsroot_crypto_load_challenge(&fs_crypto, challenge);
+//	if (retval != FSROOT_OK)
+//		goto end;
 
 	pthread_rwlock_rdlock(&file->rwlock);
 	retval = fsroot_crypto_encrypt_with_challenges(
@@ -262,11 +334,11 @@ static size_t __fsroot_open(struct fsroot_open_files *open_files, struct fsroot_
  * Returns the number of file descriptors that were referring to
  * the file.
  */
-static unsigned int __fsroot_close(struct fsroot_open_files *open_files, struct fsroot_file *file)
+static unsigned int __fsroot_close(fsroot_t *fs, struct fsroot_file *file)
 {
 	struct fsroot_file_descriptor *fildes, **file_descriptors;
+	struct fsroot_open_files *open_files = &fs->open_files;
 	unsigned int num_files = 0, num_deleted_files = 0;
-	int retval;
 
 	pthread_rwlock_wrlock(&open_files->rwlock);
 	/*
@@ -306,17 +378,18 @@ static unsigned int __fsroot_close(struct fsroot_open_files *open_files, struct 
 	pthread_rwlock_unlock(&open_files->rwlock);
 
 	/* If there are no open files left, unload all the challenges */
-	retval = fsroot_crypto_unload_challenge(&fs_crypto, challenge);
-	if (retval != FSROOT_OK && retval != FSROOT_E_NOTFOUND)
-		fprintf(stderr, "ERROR: Could not unload challenge '%s'\n", challenge);
+	unload_challenges(fs->c);
+//	retval = fsroot_crypto_unload_challenge(&fs_crypto, challenge);
+//	if (retval != FSROOT_OK && retval != FSROOT_E_NOTFOUND)
+//		fprintf(stderr, "ERROR: Could not unload challenge '%s'\n", challenge);
 
 end:
 	return num_deleted_files;
 }
 
-static int __fsroot_release(struct fsroot_open_files *open_files, struct fsroot_file *file, char strict)
+static int __fsroot_release(fsroot_t *fs, struct fsroot_file *file, char strict)
 {
-	if (!__fsroot_close(open_files, file) && strict)
+	if (!__fsroot_close(fs, file) && strict)
 		return FSROOT_E_NOTOPEN;
 
 	if (file->buf) {
@@ -566,7 +639,7 @@ int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int 
 	if (file->buf == NULL) {
 		pthread_rwlock_wrlock(&file->rwlock);
 		if (file->buf == NULL)
-			retval = fsroot_create_file_buffer(file, &error);
+			retval = fsroot_create_file_buffer(fs, file, &error);
 		pthread_rwlock_unlock(&file->rwlock);
 
 		if (retval == -1) {
@@ -649,7 +722,7 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 	pthread_rwlock_wrlock(&file->rwlock);
 
 	if (file->buf == NULL) {
-		retval = fsroot_create_file_buffer(file, &error);
+		retval = fsroot_create_file_buffer(fs, file, &error);
 
 		if (retval == -1) {
 			retval = FSROOT_E_SYSCALL;
@@ -683,7 +756,7 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 
 	file->flags.is_synced = 0;
 	if (file->flags.sync)
-		fsroot_sync_file(file);
+		fsroot_sync_file(fs, file);
 
 end:
 	pthread_rwlock_unlock(&file->rwlock);
@@ -716,7 +789,7 @@ int fsroot_sync(fsroot_t *fs, const char *path)
 	if (!file || !S_ISREG(file->mode))
 		return FSROOT_E_NOTEXISTS;
 
-	return fsroot_sync_file(file);
+	return fsroot_sync_file(fs, file);
 }
 
 /**
@@ -752,9 +825,9 @@ int fsroot_release(fsroot_t *fs, const char *path)
 		return FSROOT_E_NOTEXISTS;
 
 	if (!file->flags.is_synced)
-		fsroot_sync_file(file);
+		fsroot_sync_file(fs, file);
 
-	retval = __fsroot_release(&fs->open_files, file, 1);
+	retval = __fsroot_release(fs, file, 1);
 
 	/* Finally delete the file from disk if it has to be deleted */
 	if (file->flags.tmpfile || file->flags.delete) {
@@ -1360,6 +1433,9 @@ static void __fsroot_deinit(fsroot_t *fs)
 
 	pthread_rwlock_unlock(&fs->open_files.rwlock);
 	pthread_rwlock_destroy(&fs->open_files.rwlock);
+
+	/* Unload configuration */
+	config_deinit(&fs->c);
 }
 
 void fsroot_deinit(fsroot_t **fs)
@@ -1480,6 +1556,12 @@ int fsroot_set_root_directory(fsroot_t *fs, const char *dir)
 
 	strcpy(fs->root_path, dir);
 	return FSROOT_OK;
+}
+
+int fsroot_set_config_file(fsroot_t *fs, const char *filename)
+{
+	fs->c = config_init(filename);
+	return (fs->c ? FSROOT_OK : FSROOT_E_UNKNOWN);
 }
 
 /**

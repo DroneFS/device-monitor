@@ -20,6 +20,7 @@ int fsroot_persist(fsroot_t *, const char *filename);
 
 int fsroot_set_root_directory(fsroot_t *, const char *);
 int fsroot_set_database_file(fsroot_t *, const char *);
+int fsroot_set_config_file(fsroot_t *fs, const char *filename);
 
 int fsroot_create(fsroot_t *, const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out);
 int fsroot_open(fsroot_t *, const char *path, int flags);
