@@ -18,6 +18,8 @@
 #define FSROOT_E_SYSCALL	-5
 #define FSROOT_EOF		-6
 #define FSROOT_E_NOTOPEN	-7
+#define FSROOT_E_NOTFOUND	-8
+#define FSROOT_E_UNKNOWN	-9
 
 /**
  * \param[in] root Root folder where fsroot will store its files internally

@@ -14,9 +14,11 @@
 #include <linux/limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <stdint.h>
 #include <errno.h>
 #include <pthread.h>
 #include "fsroot.h"
+#include "fsroot-crypto.h"
 #include "hash.h"
 #include "mm.h"
 
@@ -56,6 +58,9 @@ static struct {
 static char root_path[PATH_MAX];
 static unsigned int root_path_len;
 
+fsroot_crypto_t fs_crypto;
+static char challenge[] = "libdch.so";
+
 static int fsroot_fullpath(const char *in, char *out, size_t outlen)
 {
 #define FIRST_CHAR(v) (v[0])
@@ -93,6 +98,9 @@ static int fsroot_fullpath(const char *in, char *out, size_t outlen)
 static int fsroot_create_file_buffer(struct fsroot_file *file, int *error_out)
 {
 	off_t offset;
+	uint8_t *decrypted = NULL;
+	size_t decrypted_len = 0;
+
 	FILE *fp = fopen(file->path, "r");
 	if (fp == NULL)
 		goto error;
@@ -118,16 +126,33 @@ static int fsroot_create_file_buffer(struct fsroot_file *file, int *error_out)
 	if (file->buf_len == -1)
 		goto error;
 	/*
-	 * For some reason, we happened to read fewer bytes than expected
-	 * so resize the buffer
+	 * It's an error to read fewer bytes than expected.
+	 * I'd rather not even try to deal with partial ciphertext.
 	 */
 	if (file->buf_len < offset)
-		file->buf = mm_realloc(file->buf, file->buf_len);
+		goto error;
+
+	/* Load challenges */
+	if (fsroot_crypto_load_challenge(&fs_crypto, challenge) != FSROOT_OK)
+		goto error;
+
+	if (fsroot_crypto_decrypt_with_challenges(&fs_crypto,
+			(const uint8_t *) file->buf, (size_t) file->buf_len,
+			&decrypted, &decrypted_len) != FSROOT_OK)
+		goto error;
+
+	/* Replace the original file contents with the decrypted contents */
+	mm_free(file->buf);
+	file->buf = (char *) decrypted;
+	file->buf_len = decrypted_len;
+
 end:
 	fclose(fp);
 	return 0;
 
 error:
+	if (decrypted)
+		mm_free(decrypted);
 	if (file->buf)
 		mm_free(file->buf);
 	if (fp)
@@ -165,8 +190,10 @@ end:
 static int fsroot_sync_file(struct fsroot_file *file)
 {
 	int retval = FSROOT_OK, fd;
+	uint8_t *encrypted = NULL;
+	size_t encrypted_len = 0;
 
-	/* If file has no buffer, it has already be synced */
+	/* If file has no buffer, it has already been synced */
 	if (!file->buf)
 		goto end;
 
@@ -176,12 +203,22 @@ static int fsroot_sync_file(struct fsroot_file *file)
 		goto end;
 	}
 
+	/* Load challenges */
+	retval = fsroot_crypto_load_challenge(&fs_crypto, challenge);
+	if (retval != FSROOT_OK)
+		goto end;
+
 	pthread_rwlock_rdlock(&file->rwlock);
-	write(fd, file->buf, file->buf_len);
+	retval = fsroot_crypto_encrypt_with_challenges(
+		&fs_crypto,
+		(const uint8_t *) file->buf, file->buf_len,
+		&encrypted, &encrypted_len);
+	write(fd, encrypted, encrypted_len);
 	pthread_rwlock_unlock(&file->rwlock);
 	fsync(fd);
 	close(fd);
 
+	mm_free(encrypted);
 	file->flags.is_synced = 1;
 end:
 	return retval;
@@ -232,6 +269,7 @@ static unsigned int __fsroot_close(struct fsroot_file *file)
 {
 	struct fsroot_file_descriptor *fildes, **file_descriptors;
 	unsigned int num_files = 0, num_deleted_files = 0;
+	int retval;
 
 	pthread_rwlock_wrlock(&open_files.rwlock);
 	/*
@@ -267,6 +305,12 @@ static unsigned int __fsroot_close(struct fsroot_file *file)
 	mm_free(open_files.file_descriptors);
 	open_files.file_descriptors = file_descriptors;
 	open_files.num_files = num_files;
+
+	/* If there are no open files left, unload all the challenges */
+	retval = fsroot_crypto_unload_challenge(&fs_crypto, challenge);
+	if (retval != FSROOT_OK && retval != FSROOT_E_NOTFOUND)
+		fprintf(stderr, "ERROR: Could not unload challenge '%s'\n", challenge);
+
 	pthread_rwlock_unlock(&open_files.rwlock);
 
 end:

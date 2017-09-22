@@ -81,12 +81,10 @@ void release_foo_and_bar(char with_trailing_slash)
 	retval = fsroot_release(bar_path);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"bar\") returned %d\n", retval);
 
-	/* Check the size of 'foo' */
 	ck_assert_msg(stat(foo_fullpath, &st) == 0, "stat(\"%s\") failed\n", foo_fullpath);
-	ck_assert_int_eq(st.st_size, strlen(foo_data));
-	/* Check the size of 'bar' */
+	ck_assert_msg(S_ISREG(st.st_mode), "File '%s' should be a regular file\n", foo_fullpath);
 	ck_assert_msg(stat(bar_fullpath, &st) == 0, "stat(\"%s\") failed\n", bar_fullpath);
-	ck_assert_int_eq(st.st_size, strlen(bar_data));
+	ck_assert_msg(S_ISREG(st.st_mode), "File '%s' should be a regular file\n", bar_fullpath);
 }
 
 START_TEST(test_fsroot_create)

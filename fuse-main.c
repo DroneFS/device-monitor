@@ -635,9 +635,9 @@ static int dm_fuse_access(const char *path, int mask)
 	return -EACCES;
 }
 
-void print_help()
+void print_help(const char *program_name)
 {
-	printf("<mount point> <root dir> <root UID> <root GID>\n");
+	printf("Usage: %s <mount point> <root dir>\n", program_name);
 }
 
 int main(int argc, char **argv)
@@ -700,12 +700,9 @@ int main(int argc, char **argv)
 	if (fuse_opt_parse(&args, &options, opts, NULL) == -1)
 		return 1;
 
-	if (options.show_help)
-		goto help;
-
 	return fuse_main(args.argc, args.argv, &dm_operations, NULL);
 
 help:
-	print_help();
+	print_help(argv[0]);
 	return 0;
 }

@@ -1,3 +1,5 @@
+AM_LDFLAGS = -ldl $(LDFLAGS)
+
 TESTS = test_fsroot_create test_fsroot_symlink test_fsroot_rename test_fsroot_chmod_chown \
 	test_fsroot_getattr test_fsroot_mkdir test_fsroot_readdir test_fsroot_root_path \
 	test_fsroot_path_basename test_fsroot_path_traversal

@@ -13,7 +13,12 @@ fuse_main_LDADD = libfsroot.la
 # fuse_main_LDFLAGS = $(pkg-config --cflags --libs fuse)
 
 lib_LTLIBRARIES = libfsroot.la
-libfsroot_la_SOURCES = fsroot.c hash.c mm.c fsroot-path.c
+libfsroot_la_SOURCES = fsroot.c hash.c mm.c fsroot-path.c fsroot-crypto.c
 libfsroot_la_CFLAGS = $(CFLAGS)
-libfsroot_la_LDFLAGS = -pthread
+libfsroot_la_LDFLAGS = -pthread -lgcrypt
+
+lib_LTLIBRARIES += libdch.la
+libdch_la_SOURCES = dummy-challenge.c
+libdch_la_CFLAGS = $(CFLAGS)
+libdch_la_LDFLAGS =
 
