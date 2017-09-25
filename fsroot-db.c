@@ -329,15 +329,15 @@ int fsroot_db_iter_next(fsroot_db_iter_t *it, char **fname, struct fsroot_file *
 	case SQLITE_ROW:
 		/* We have a new row - pass it up to caller */
 		if (fname) {
-			sqlite_filename = (const char *) sqlite3_column_text(it->sqlite_stmt, 1);
+			sqlite_filename = (const char *) sqlite3_column_text(it->sqlite_stmt, 0);
 			if (!sqlite_filename)
 				return FSROOT_E_SYSCALL; /* this should not happen */
 			*fname = strdup(sqlite_filename);
 		}
 		if (f) {
-			f->mode = sqlite3_column_int(it->sqlite_stmt, 2);
-			f->uid = sqlite3_column_int(it->sqlite_stmt, 3);
-			f->gid = sqlite3_column_int(it->sqlite_stmt, 4);
+			f->mode = sqlite3_column_int(it->sqlite_stmt, 1);
+			f->uid = sqlite3_column_int(it->sqlite_stmt, 2);
+			f->gid = sqlite3_column_int(it->sqlite_stmt, 3);
 		}
 		retval = FSROOT_OK;
 		break;
