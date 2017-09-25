@@ -41,8 +41,10 @@
 #include <fuse.h>
 #include "fsroot.h"
 
+static char
+	*config_file,
+	*database_file;
 static char root_path[PATH_MAX];
-static char config_file[PATH_MAX];
 static unsigned int root_path_len;
 struct {
 	uid_t uid;
@@ -75,8 +77,18 @@ static void *dm_fuse_init(struct fuse_conn_info *conn)
 		exit(EXIT_FAILURE);
 	}
 
-	if (fsroot_set_config_file(fsroot, config_file) != FSROOT_OK) {
+	if (!config_file) {
+		fprintf(stderr, "WARNING: Config file not set\n");
+	} else if (fsroot_set_config_file(fsroot, config_file) != FSROOT_OK) {
 		fprintf(stderr, "ERROR: Could not set config file\n");
+		fsroot_deinit(&fsroot);
+		exit(EXIT_FAILURE);
+	}
+
+	if (!database_file) {
+		fprintf(stderr, "WARNING: Database file not set\n");
+	} else if (fsroot_set_database_file(fsroot, database_file) != FSROOT_OK) {
+		fprintf(stderr, "ERROR: Could not set database file\n");
 		fsroot_deinit(&fsroot);
 		exit(EXIT_FAILURE);
 	}
@@ -92,14 +104,17 @@ static void *dm_fuse_init(struct fuse_conn_info *conn)
 
 static void dm_fuse_destroy(void *v)
 {
+	int retval;
 	fsroot_t *fs = (fsroot_t *) v;
-	int retval = fsroot_persist(fs, "fsroot.db");
 
-	if (retval != FSROOT_OK) {
-		fprintf(stderr, "ERROR: Could not store FSRoot state at file 'fsroot.db'"
-			"Error code: %d", retval);
+	if (!database_file)
+		goto end;
+	if ((retval = fsroot_persist(fs, database_file)) != FSROOT_OK) {
+		fprintf(stderr, "ERROR: Could not store FSRoot state at file '%s'"
+			"Error code: %d", database_file, retval);
 	}
 
+end:
 	fsroot_deinit(&fs);
 }
 
@@ -724,31 +739,19 @@ int main(int argc, char **argv)
 	};
 	struct options {
 		int show_help;
+		char *db_file;
+		char *config_file;
 	} options = {0};
 	const struct fuse_opt opts[] = {
 		{"-h", offsetof(struct options, show_help), 1},
 		{"--help", offsetof(struct options, show_help), 1},
+		{"--db-file=%s", offsetof(struct options, db_file), 0},
+		{"--config-file=%s", offsetof(struct options, config_file), 0},
 		FUSE_OPT_END
 	};
 
-	if (argc < 4)
+	if (argc < 2)
 		goto help;
-
-	/* This is the config file */
-	argc--;
-	strcpy(config_file, argv[argc]);
-
-	/*
-	 * The last argument should be the root directory.
-	 * Strip it off.
-	 */
-	argc--;
-	root_path_len = strlen(argv[argc]);
-	if (root_path_len > sizeof(root_path) - 1) {
-		fprintf(stderr, "ERROR: too large root path.\n");
-		return 1;
-	}
-	strcpy(root_path, argv[argc]);
 
 	/* TODO FIXME do not hardcode these */
 	root_info.uid = 1000;
@@ -759,6 +762,20 @@ int main(int argc, char **argv)
 	args.allocated = 0;
 	if (fuse_opt_parse(&args, &options, opts, NULL) == -1)
 		return 1;
+
+	/* Set the config file path */
+	config_file = options.config_file;
+	/* Set the database file path */
+	database_file = options.db_file;
+
+	/* The next argument is the root directory - we strip it off */
+	args.argc--;
+	root_path_len = strlen(args.argv[args.argc]);
+	if (root_path_len > sizeof(root_path) - 1) {
+		fprintf(stderr, "ERROR: too large root path.\n");
+		return 1;
+	}
+	strcpy(root_path, args.argv[args.argc]);
 
 	return fuse_main(args.argc, args.argv, &dm_operations, NULL);
 
