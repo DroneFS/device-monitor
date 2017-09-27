@@ -19,6 +19,31 @@
  * \defgroup fsroot-db fsroot persistence layer
  *
  * @{
+ *
+ * This is the main interface to the database file where fsroot stores
+ * the file metadata. The information stored basically consists of the following
+ * items:
+ *
+ *  - File name
+ *  - Mode (file type + permission bits)
+ *  - Owner (UID) and group (GID)
+ *
+ * A database file is opened with fsroot_db_open(). The file must already exist, or
+ * the function fails with `FSROOT_E_NOTEXISTS`. This function also initializes a
+ * database handle, which can be used to work with the just opened database file.
+ * The database handle is a pointer to an opaque `fsroot_db_t` object.
+ *
+ * The database stays in memory while it is being modified or iterated, just after
+ * a successful fsroot_db_open().
+ *
+ * The database handle is destroyed with fsroot_db_close(). This causes the file's contents
+ * to be replaced with the new ones in memory.
+ *
+ * If the database file does not exist yet, or you want to create a new one, you can do so
+ * with fsroot_db_create(). This function will create a file with the given name, and initialize
+ * it with the proper format. Calls to fsroot_db_open() will fail if either the specified file
+ * does not exist, or it does not have the correct format. The fsroot_db_create() function will
+ * fail if a file with the given name already exists.
  */
 
 struct fsroot_db_st
