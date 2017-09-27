@@ -25,7 +25,7 @@ AC_ARG_ENABLE(doc, AS_HELP_STRING([--disable-doc], [Do not generate Doxygen docs
   enable_doc=$enableval, enable_doc=yes)
 if test "$enable_doc" == "yes"; then
   AC_CHECK_PROGS([DOXYGEN], [doxygen])
-  AS_IF([test "$DOXYGEN" == "doxygen"], [
+  AS_IF([test -n "$DOXYGEN"], [
     AC_CONFIG_FILES([docs/Makefile docs/device-monitor.doxy])
     AC_SUBST([DOCS_FOLDER], [docs])
     DOCS="Yes. Doxygen docs will be generated"
