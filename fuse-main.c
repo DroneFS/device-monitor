@@ -708,7 +708,12 @@ static int dm_fuse_access(const char *path, int mask)
 
 void print_help(const char *program_name)
 {
-	printf("Usage: %s <mount point> <root dir> <config file>\n", program_name);
+	printf("Usage: %s [options] <mount point> <root dir>\n\n"
+			"Available options:\n\n"
+			"-h, --help    Show this help text\n"
+			"--db-file     Set the path to the database file.\n"
+			"              If the file does not exist, it will be created.\n"
+			"--config-file Set the path to the configuration file.\n", program_name);
 }
 
 int main(int argc, char **argv)
