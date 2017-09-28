@@ -9,12 +9,34 @@
 
 char dir[] = "fsroot-root";
 
+struct expected_dir
+{
+	char *dirname;
+	int checked;
+};
+
 void create_dir_tree(fsroot_t *fs)
 {
 	mode_t dirmode = 0040700;
 	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, dirmode), FSROOT_OK);
 	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_1", 1000, 1000, dirmode), FSROOT_OK);
 	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_2", 1000, 1000, dirmode), FSROOT_OK);
+}
+
+static int check_dir(const char *dirname, struct expected_dir *dirs)
+{
+	struct expected_dir *dir;
+
+	for (dir = dirs; dir->dirname; dir++) {
+		if (strcmp(dir->dirname, dirname) == 0 &&
+			dir->checked == 0) {
+			/* Mark this directory as checked */
+			dir->checked = 1;
+			return 1;
+		}
+	}
+
+	return 0;
 }
 
 START_TEST(test_fsroot_readdir)
@@ -24,6 +46,18 @@ START_TEST(test_fsroot_readdir)
 	int retval, err;
 	char dirname[PATH_MAX];
 	size_t dirlen = sizeof(dirname);
+	struct expected_dir *cur_dir;
+	struct expected_dir expected_dirs[] = {
+		{
+			.dirname = "dir_1",
+			.checked = 0
+		},
+		{
+			.dirname = "dir_2",
+			.checked = 0
+		},
+		{ NULL, 0 }
+	};
 
 	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
@@ -40,11 +74,13 @@ START_TEST(test_fsroot_readdir)
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (1st time)\n", retval);
-	ck_assert_str_eq(dirname, "dir_1");
+	ck_assert_msg(check_dir(dirname, expected_dirs),
+		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (2nd time)\n", retval);
-	ck_assert_str_eq(dirname, "dir_2");
+	ck_assert_msg(check_dir(dirname, expected_dirs),
+		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
@@ -52,6 +88,12 @@ START_TEST(test_fsroot_readdir)
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (2nd time)\n", retval);
+
+	/* Check that all the expected directories have been checked */
+	for (cur_dir = expected_dirs; cur_dir->dirname; cur_dir++) {
+		ck_assert_msg(cur_dir->checked,
+			"Directory '%s' has not been checked\n", cur_dir->dirname);
+	}
 
 	fsroot_closedir(&dh);
 	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == FSROOT_E_BADARGS);
@@ -67,6 +109,18 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 	int retval, err;
 	char dirname[PATH_MAX];
 	size_t dirlen = sizeof(dirname);
+	struct expected_dir *cur_dir;
+	struct expected_dir expected_dirs[] = {
+		{
+			.dirname = "dir_1",
+			.checked = 0
+		},
+		{
+			.dirname = "dir_2",
+			.checked = 0
+		},
+		{ NULL, 0 }
+	};
 
 	retval = fsroot_init(&fs);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
@@ -83,7 +137,8 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (1st time)\n", retval);
-	ck_assert_str_eq(dirname, "dir_1");
+	ck_assert_msg(check_dir(dirname, expected_dirs),
+		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, 1, &err);
 	ck_assert_msg(retval == FSROOT_E_NOMEM, "fsroot_readdir() returned %d "
@@ -91,7 +146,8 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (2nd time)\n", retval);
-	ck_assert_str_eq(dirname, "dir_2");
+	ck_assert_msg(check_dir(dirname, expected_dirs),
+		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
 	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
@@ -102,6 +158,12 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 	retval = fsroot_readdir(dh, dirname, 2, &err);
 	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (3rd time)\n", retval);
+
+	/* Check that all the expected directories have been checked */
+	for (cur_dir = expected_dirs; cur_dir->dirname; cur_dir++) {
+		ck_assert_msg(cur_dir->checked,
+			"Directory '%s' has not been checked\n", cur_dir->dirname);
+	}
 
 	fsroot_closedir(&dh);
 	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == FSROOT_E_BADARGS);
