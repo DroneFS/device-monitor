@@ -1,5 +1,10 @@
-all-local:
+doxy.stamp:
 	$(DOXYGEN) $(builddir)/device-monitor.doxy
+	echo > doxy.stamp
+
+CLEANFILES = doxy.stamp
+
+all-local: doxy.stamp
 
 clean-local:
 	rm -rf html/
