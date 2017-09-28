@@ -7,7 +7,19 @@ AC_CONFIG_FILES([Makefile tests/Makefile])
 AC_CONFIG_MACRO_DIR([m4])
 
 PKG_CHECK_MODULES([FUSE], [fuse])
-PKG_CHECK_MODULES([CHECK], [check >= 0.9.6])
+PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
+  [enable_check=yes],
+  [enable_check=no])
+# FIXME These are probably temporary
+PKG_CHECK_MODULES([LUA], [lua-5.1 >= 5.1.5])
+PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.11])
+AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
+  [libgcrypt_available=yes],
+  [libgcrypt_available=no])
+if test "$libgcrypt_available" == "no"; then
+  echo "ERROR: libgcrypt was not found"
+  exit
+fi
 
 AC_PROG_CC
 # This is needed for the '-std=gnu99' flag, which is also needed
@@ -19,7 +31,17 @@ AC_PROG_LIBTOOL
 LT_INIT
 
 #
-# Check for Doxygen (unless docs disbled by user)
+# Check for 'check'
+#
+AM_CONDITIONAL([HAVE_CHECK], [test "$enable_check" == "yes"])
+if test "$enable_check" == "yes"; then
+  TESTS="Unit tests will be compiled. You can run them with 'make check'."
+else
+  TESTS="Unit tests will NOT be compiled, since 'check' is not installed. 'make check' will not work."
+fi
+
+#
+# Check for Doxygen (unless docs disabled by user)
 #
 AC_ARG_ENABLE(doc, AS_HELP_STRING([--disable-doc], [Do not generate Doxygen docs]),
   enable_doc=$enableval, enable_doc=yes)
@@ -47,4 +69,6 @@ else
   echo " (OK)"
 fi
 echo "Docs: $DOCS"
+echo "Unit tests: $TESTS"
 echo
+
