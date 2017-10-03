@@ -146,21 +146,12 @@ static int load_challenge(fsroot_crypto_t *fsc, const char *libch, unsigned int 
 
 static void unload_challenge(fsroot_crypto_t *fsc, unsigned int index)
 {
-	size_t i;
-
 	/* Unload the challenge at the designated index */
 	mm_free(fsc->challenges[index]);
 	dlclose(fsc->handles[index]);
 
-	/* Bring the others front */
-	for (i = index; i < fsc->num_challenges; i++) {
-		fsc->challenges[i] = fsc->challenges[i + 1];
-		fsc->handles[i] = fsc->handles[i + 1];
-		fsc->challenges[i + 1] = NULL;
-		fsc->handles[i + 1] = NULL;
-	}
-	fsc->challenges[i] = NULL;
-	fsc->handles[i] = NULL;
+	fsc->challenges[index] = NULL;
+	fsc->handles[index] = NULL;
 }
 
 static uint8_t *get_key_from_challenge(void *handle)
@@ -270,8 +261,8 @@ int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
 {
 	int retval = FSROOT_E_NOTFOUND;
 
-	for (size_t i = 0; i < fsc->num_slots && fsc->challenges[i]; i++) {
-		if (strcmp(fsc->challenges[i], libch) == 0) {
+	for (size_t i = 0; i < fsc->num_slots; i++) {
+		if (fsc->challenges[i] && strcmp(fsc->challenges[i], libch) == 0) {
 			unload_challenge(fsc, i);
 			fsc->num_challenges--;
 			retval = FSROOT_OK;
