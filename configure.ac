@@ -12,7 +12,7 @@ PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
   [enable_check=no])
 # FIXME These are probably temporary
 PKG_CHECK_MODULES([LUA], [lua-5.1 >= 5.1.5])
-PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.11])
+PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.8])
 AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
   [libgcrypt_available=yes],
   [libgcrypt_available=no])
