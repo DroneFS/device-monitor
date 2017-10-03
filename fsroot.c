@@ -49,6 +49,7 @@ struct fsroot_open_files {
 
 struct _fsroot_st
 {
+	int started;
 	config_t *c;
 	char root_path[PATH_MAX + 1];
 	char *database_file;
@@ -439,6 +440,8 @@ int fsroot_create(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t m
 
 	if (!fs || !path || !mode || !S_ISREG(mode))
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 	if (hash_table_contains(fs->files, path))
 		return FSROOT_E_EXISTS;
 
@@ -571,6 +574,8 @@ int fsroot_open(fsroot_t *fs, const char *path, int flags)
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	/* File must exist, due to a previous call to fsroot_create() */
 	file = hash_table_get(fs->files, path);
@@ -613,6 +618,8 @@ int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int 
 
 	if (!fs || !buf || !size || fd < 0)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	pthread_rwlock_rdlock(&fs->open_files.rwlock);
 
@@ -696,6 +703,8 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 
 	if (!fs || !buf || !size || fd < 0)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	pthread_rwlock_rdlock(&fs->open_files.rwlock);
 
@@ -784,6 +793,8 @@ int fsroot_sync(fsroot_t *fs, const char *path)
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
@@ -819,6 +830,8 @@ int fsroot_release(fsroot_t *fs, const char *path)
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
@@ -872,6 +885,8 @@ int fsroot_delete(fsroot_t *fs, const char *path)
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
@@ -946,6 +961,8 @@ int fsroot_getattr(fsroot_t *fs, const char *path, struct stat *out_st)
 
 	if (!fs || !path || !out_st)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
@@ -990,6 +1007,8 @@ int fsroot_symlink(fsroot_t *fs, const char *linkpath, const char *target, uid_t
 
 	if (!fs || !linkpath || !target)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 	if (!S_ISLNK(mode)) /* This is not a symlink! */
 		return FSROOT_E_BADARGS;
 
@@ -1028,6 +1047,8 @@ int fsroot_symlink_delete(fsroot_t *fs, const char *linkpath)
 
 	if (!fs || !linkpath)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, linkpath);
 	if (!file || !S_ISLNK(file->mode))
@@ -1068,6 +1089,8 @@ int fsroot_readlink(fsroot_t *fs, const char *linkpath, char *dst, size_t *dstle
 
 	if (!fs || !linkpath || !dst || !dstlen)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, linkpath);
 	if (file == NULL || !S_ISLNK(file->mode))
@@ -1117,6 +1140,8 @@ int fsroot_mkdir(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t mo
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 	if (!S_ISDIR(mode)) /* This is not a directory! */
 		return FSROOT_E_BADARGS;
 
@@ -1157,6 +1182,8 @@ int fsroot_rmdir(fsroot_t *fs, const char *path)
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 	/* Obviously we loudly complain if someone tries to remove the root dir */
 	if (path[0] == '/' && path[1] == 0)
 		return FSROOT_E_BADARGS;
@@ -1197,6 +1224,8 @@ int fsroot_rename(fsroot_t *fs, const char *path, const char *newpath)
 
 	if (!fs || !path || !newpath || !fsroot_fullpath(fs->root_path, newpath, full_newpath, sizeof(full_newpath)))
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
@@ -1241,6 +1270,8 @@ int fsroot_chmod(fsroot_t *fs, const char *path, mode_t mode)
 
 	if (!fs || !path || !filetype)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
@@ -1273,6 +1304,8 @@ int fsroot_chown(fsroot_t *fs, const char *path, uid_t uid, gid_t gid)
 
 	if (!fs || !path)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
@@ -1304,6 +1337,8 @@ int fsroot_opendir(fsroot_t *fs, const char *path, void **outdir, int *error)
 
 	if (!fs || !path || !outdir || !fsroot_fullpath(fs->root_path, path, fullpath, sizeof(fullpath)))
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	dp = opendir(fullpath);
 	if (!dp)
@@ -1332,7 +1367,7 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 	const char *source;
 	char path[PATH_MAX];
 
-	if (!h || !h->dp || !out || !outlen)
+	if (!h || !h->dp || !h->fs || !out || !outlen)
 		return FSROOT_E_BADARGS;
 
 	if (h->last_dir) {
@@ -1436,6 +1471,7 @@ static void __fsroot_deinit(fsroot_t *fs)
 
 	/* Unload configuration */
 	config_deinit(&fs->c);
+	fs->started = 0;
 }
 
 void fsroot_deinit(fsroot_t **fs)
@@ -1473,6 +1509,8 @@ int fsroot_persist(fsroot_t *fs, const char *filename)
 
 	if (!fs || !filename || !*filename)
 		return FSROOT_E_BADARGS;
+	if (!fs->started)
+		return FSROOT_E_NOTSTARTED;
 
 	retval = fsroot_db_create(filename);
 	if (retval == FSROOT_E_EXISTS) {
@@ -1710,6 +1748,8 @@ int fsroot_start(fsroot_t *fs, uid_t root_uid, gid_t root_gid, mode_t root_mode)
 		}
 	}
 
+	if (retval == FSROOT_OK)
+		fs->started = 1;
 	return retval;
 }
 
