@@ -41,6 +41,7 @@ as that of the covered work.  */
 #include <assert.h>
 #include <string.h>
 #include <limits.h>
+#include <pthread.h>
 
 #ifndef STANDALONE
 /* Get Wget's utility headers. */
@@ -164,6 +165,7 @@ struct hash_table {
 				   entries, resize the table.  */
 	int prime_offset;	/* the offset of the current prime in
 				   the prime table. */
+	pthread_mutex_t mutex;
 };
 
 /* We use the all-bits-set constant (INVALID_PTR) marker to mean that
@@ -299,6 +301,8 @@ struct hash_table *hash_table_new(int items,
 
 	ht->count = 0;
 
+	pthread_mutex_init(&ht->mutex, NULL);
+
 	return ht;
 }
 
@@ -306,6 +310,7 @@ struct hash_table *hash_table_new(int items,
 
 void hash_table_destroy(struct hash_table *ht)
 {
+	pthread_mutex_destroy(&ht->mutex);
 	xfree(ht->cells);
 	xfree(ht);
 }
@@ -317,14 +322,23 @@ void hash_table_destroy(struct hash_table *ht)
 static inline struct cell *find_cell(const struct hash_table *ht,
 				     const void *key)
 {
-	struct cell *cells = ht->cells;
-	int size = ht->size;
-	struct cell *c = cells + HASH_POSITION(key, ht->hash_function, size);
-	testfun_t equals = ht->test_function;
+	struct cell *cells;
+	int size;
+	struct cell *c;
+	testfun_t equals;
+
+	pthread_mutex_lock((pthread_mutex_t *) &ht->mutex);
+
+	cells = ht->cells;
+	size = ht->size;
+	c = cells + HASH_POSITION(key, ht->hash_function, size);
+	equals = ht->test_function;
 
 	FOREACH_OCCUPIED_ADJACENT(c, cells, size)
 	    if (equals(key, c->key))
 		break;
+
+	pthread_mutex_unlock((pthread_mutex_t *) &ht->mutex);
 	return c;
 }
 
@@ -337,11 +351,16 @@ static inline struct cell *find_cell(const struct hash_table *ht,
 
 void *hash_table_get(const struct hash_table *ht, const void *key)
 {
+	void *ret = NULL;
 	struct cell *c = find_cell(ht, key);
-	if (CELL_OCCUPIED(c))
-		return c->value;
-	else
-		return NULL;
+
+	if (CELL_OCCUPIED(c)) {
+		pthread_mutex_lock((pthread_mutex_t *) &ht->mutex);
+		ret = c->value;
+		pthread_mutex_unlock((pthread_mutex_t *) &ht->mutex);
+	}
+
+	return ret;
 }
 
 /* Like hash_table_get, but writes out the pointers to both key and
@@ -353,10 +372,12 @@ hash_table_get_pair(const struct hash_table *ht, const void *lookup_key,
 {
 	struct cell *c = find_cell(ht, lookup_key);
 	if (CELL_OCCUPIED(c)) {
+		pthread_mutex_lock((pthread_mutex_t *) &ht->mutex);
 		if (orig_key)
 			*(void **)orig_key = c->key;
 		if (value)
 			*(void **)value = c->value;
+		pthread_mutex_unlock((pthread_mutex_t *) &ht->mutex);
 		return 1;
 	} else
 		return 0;
@@ -417,22 +438,28 @@ void hash_table_put(struct hash_table *ht, const void *key, const void *value)
 	struct cell *c = find_cell(ht, key);
 	if (CELL_OCCUPIED(c)) {
 		/* update existing item */
+		pthread_mutex_lock(&ht->mutex);
 		c->key = (void *)key;	/* const? */
 		c->value = (void *)value;
+		pthread_mutex_unlock(&ht->mutex);
 		return;
 	}
 
 	/* If adding the item would make the table exceed max. fullness,
 	   grow the table first.  */
 	if (ht->count >= ht->resize_threshold) {
+		pthread_mutex_lock(&ht->mutex);
 		grow_hash_table(ht);
+		pthread_mutex_unlock(&ht->mutex);
 		c = find_cell(ht, key);
 	}
 
 	/* add new item */
+	pthread_mutex_lock(&ht->mutex);
 	++ht->count;
 	c->key = (void *)key;	/* const? */
 	c->value = (void *)value;
+	pthread_mutex_unlock(&ht->mutex);
 }
 
 /* Remove KEY->value mapping from HT.  Return 0 if there was no such
@@ -441,9 +468,11 @@ void hash_table_put(struct hash_table *ht, const void *key, const void *value)
 int hash_table_remove(struct hash_table *ht, const void *key)
 {
 	struct cell *c = find_cell(ht, key);
-	if (!CELL_OCCUPIED(c))
+	if (!CELL_OCCUPIED(c)) {
 		return 0;
-	else {
+	} else {
+		pthread_mutex_lock(&ht->mutex);
+
 		int size = ht->size;
 		struct cell *cells = ht->cells;
 		hashfun_t hasher = ht->hash_function;
@@ -475,6 +504,8 @@ int hash_table_remove(struct hash_table *ht, const void *key)
  next_rehash:
 			;
 		}
+
+		pthread_mutex_unlock(&ht->mutex);
 		return 1;
 	}
 }
@@ -485,39 +516,20 @@ int hash_table_remove(struct hash_table *ht, const void *key)
 
 void hash_table_clear(struct hash_table *ht)
 {
+	pthread_mutex_lock(&ht->mutex);
 	memset(ht->cells, INVALID_PTR_CHAR, ht->size * sizeof(struct cell));
 	ht->count = 0;
+	pthread_mutex_unlock(&ht->mutex);
 }
 
-/* Call FN for each entry in HT.  FN is called with three arguments:
-   the key, the value, and ARG.  When FN returns a non-zero value, the
-   mapping stops.
-
-   It is undefined what happens if you add or remove entries in the
-   hash table while hash_table_for_each is running.  The exception is
-   the entry you're currently mapping over; you may call
-   hash_table_put or hash_table_remove on that entry's key.  That is
-   also the reason why this function cannot be implemented in terms of
-   hash_table_iterate.  */
-
-void
-hash_table_for_each(struct hash_table *ht,
-		    int (*fn) (void *, void *, void *), void *arg)
+void hash_table_lock(struct hash_table *ht)
 {
-	struct cell *c = ht->cells;
-	struct cell *end = ht->cells + ht->size;
+	pthread_mutex_lock(&ht->mutex);
+}
 
-	for (; c < end; c++)
-		if (CELL_OCCUPIED(c)) {
-			void *key;
- repeat:
-			key = c->key;
-			if (fn(key, c->value, arg))
-				return;
-			/* hash_table_remove might have moved the adjacent cells. */
-			if (c->key != key && CELL_OCCUPIED(c))
-				goto repeat;
-		}
+void hash_table_unlock(struct hash_table *ht)
+{
+	pthread_mutex_unlock(&ht->mutex);
 }
 
 /* Initiate iteration over HT.  Entries are obtained with
@@ -549,13 +561,14 @@ int hash_table_iter_next(hash_table_iterator * iter)
 {
 	struct cell *c = iter->pos;
 	struct cell *end = iter->end;
-	for (; c < end; c++)
+	for (; c < end; c++) {
 		if (CELL_OCCUPIED(c)) {
 			iter->key = c->key;
 			iter->value = c->value;
 			iter->pos = c + 1;
 			return 1;
 		}
+	}
 	return 0;
 }
 

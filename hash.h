@@ -63,4 +63,7 @@ struct hash_table *make_nocase_string_hash_table(int);
 
 unsigned long hash_pointer(const void *);
 
+void hash_table_lock(struct hash_table *);
+void hash_table_unlock(struct hash_table *);
+
 #endif				/* HASH_H */
