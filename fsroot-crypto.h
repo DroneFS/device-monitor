@@ -7,6 +7,7 @@
 #ifndef __FSROOT_CRYPTO_H__
 #define __FSROOT_CRYPTO_H__
 #include <stdint.h>
+#include "fsroot-config.h"
 
 struct fsroot_crypto_st
 {
@@ -29,6 +30,11 @@ int fsroot_crypto_encrypt_with_challenges(fsroot_crypto_t *,
 int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *,
 		const uint8_t *, size_t,
 		uint8_t **, size_t *);
+
+int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *, config_t *);
+void fsroot_crypto_unload_all_challenges(fsroot_crypto_t *);
+
+size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *);
 
 #endif
 

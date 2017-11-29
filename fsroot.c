@@ -23,6 +23,7 @@
 #include "fsroot-crypto.h"
 #include "fsroot-config.h"
 #include "hash.h"
+#include "log.h"
 #include "mm.h"
 
 /**
@@ -51,6 +52,7 @@ struct _fsroot_st
 {
 	int started;
 	config_t *c;
+	struct logger *logger;
 	char root_path[PATH_MAX + 1];
 	char *database_file;
 	struct hash_table *files;
@@ -90,75 +92,9 @@ static int fsroot_fullpath(const char *root_path, const char *in, char *out, siz
 		strncat(out, &slash, 1);
 	strcat(out, in);
 
-	fprintf(stderr, "DEBUG: fullpath = %s\n", out);
 	return 1;
 #undef FIRST_CHAR
 #undef LAST_CHAR
-}
-
-static int __config_forward_challenges(config_value_t *it, challenge_loader_fn_t f)
-{
-	int retval;
-	char *chall_name;
-	config_value_t *val = NULL;
-
-	while (config_iterator_next(it, &val) == CONFIG_OK) {
-		if (config_get_as_string(val, &chall_name) == CONFIG_OK) {
-			/* Load the challenge */
-			retval = f(&fs_crypto, chall_name);
-			mm_free(chall_name);
-			if (retval != FSROOT_OK)
-				break;
-		}
-	}
-
-	config_destroy_value(&val);
-	return retval;
-}
-
-static int __config_forward_challenge(config_value_t *val, challenge_loader_fn_t f)
-{
-	int retval = FSROOT_E_UNKNOWN;
-	char *chall_name;
-
-	if (config_get_as_string(val, &chall_name) == CONFIG_OK) {
-		retval = f(&fs_crypto, chall_name);
-		mm_free(chall_name);
-	}
-
-	return retval;
-}
-
-static int forward_challenges(config_t *c, challenge_loader_fn_t f)
-{
-	int retval;
-	config_value_t *val = NULL;
-
-	if (config_get_value(c, &val, "challenges") == CONFIG_OK) {
-		if (config_is_iterator(val))
-			retval = __config_forward_challenges(val, f);
-		else if (config_is_string(val))
-			retval = __config_forward_challenge(val, f);
-		else
-			goto error;
-
-		config_destroy_value(&val);
-	}
-
-	return retval;
-
-error:
-	return FSROOT_E_UNKNOWN;
-}
-
-static int load_challenges(config_t *c)
-{
-	return forward_challenges(c, fsroot_crypto_load_challenge);
-}
-
-static int unload_challenges(config_t *c)
-{
-	return forward_challenges(c, fsroot_crypto_unload_challenge);
 }
 
 static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int *error_out)
@@ -191,28 +127,44 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 	file->buf_len = fread(file->buf, 1, offset, fp);
 	if (file->buf_len == -1)
 		goto error;
-	/*
-	 * It's an error to read fewer bytes than expected.
-	 * I'd rather not even try to deal with partial ciphertext.
-	 */
-	if (file->buf_len < offset)
-		goto error;
 
-	/* Load challenges */
-	if (fs->c && load_challenges(fs->c) != FSROOT_OK)
-		goto error;
-//	if (fsroot_crypto_load_challenge(&fs_crypto, challenge) != FSROOT_OK)
-//		goto error;
+	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
+		/* Load challenges */
+		if (fsroot_crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
+			goto error;
+	}
 
-	if (fsroot_crypto_decrypt_with_challenges(&fs_crypto,
-			(const uint8_t *) file->buf, (size_t) file->buf_len,
-			&decrypted, &decrypted_len) != FSROOT_OK)
-		goto error;
+	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) > 0) {
+		/*
+		 * I'd rather not even try to deal with partial ciphertext.
+		 * Just fail if we read fewer bytes than expected.
+		 */
+		if (file->buf_len < offset)
+			goto error;
 
-	/* Replace the original file contents with the decrypted contents */
-	mm_free(file->buf);
-	file->buf = (char *) decrypted;
-	file->buf_len = decrypted_len;
+		if (fsroot_crypto_decrypt_with_challenges(&fs_crypto,
+				(const uint8_t *) file->buf, (size_t) file->buf_len,
+				&decrypted, &decrypted_len) != FSROOT_OK)
+			goto error;
+
+		/* Replace the original file contents with the decrypted contents */
+		mm_free(file->buf);
+		file->buf = (char *) decrypted;
+		file->buf_len = decrypted_len;
+	} else {
+		log_i(fs->logger, "WARNING: No challenges were loaded. Data will be read as plaintext.\n");
+
+		/* No challenges to load, so no need to decrypt - we've read the plaintext itself */
+		if (file->buf_len < offset) {
+			/*
+			 * For some reason, we happened to read fewer bytes than expected
+			 * so resize the buffer
+			 */
+			file->buf = mm_realloc(file->buf, file->buf_len);
+		}
+	}
+
+
 
 end:
 	fclose(fp);
@@ -246,6 +198,8 @@ static struct fsroot_file *fsroot_create_file(fsroot_t *fs, const char *path, ui
 		goto end;
 	}
 
+	log_d(fs->logger, "fullpath: %s\n", fullpath);
+
 	file->path = fullpath;
 	file->uid = uid;
 	file->gid = gid;
@@ -260,6 +214,7 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 	int retval = FSROOT_OK, fd;
 	uint8_t *encrypted = NULL;
 	size_t encrypted_len = 0;
+	ssize_t written;
 
 	/* If file has no buffer, it has already been synced */
 	if (!file->buf)
@@ -271,25 +226,35 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 		goto end;
 	}
 
-	/* Load challenges */
-	if (fs->c && load_challenges(fs->c) != FSROOT_OK)
-		goto end;
-//	retval = fsroot_crypto_load_challenge(&fs_crypto, challenge);
-//	if (retval != FSROOT_OK)
-//		goto end;
+	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
+		/* Load challenges */
+		if (fsroot_crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
+			return FSROOT_E_SYSCALL;
+	}
 
 	pthread_rwlock_rdlock(&file->rwlock);
-	retval = fsroot_crypto_encrypt_with_challenges(
-		&fs_crypto,
-		(const uint8_t *) file->buf, file->buf_len,
-		&encrypted, &encrypted_len);
-	write(fd, encrypted, encrypted_len);
+
+	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) > 0) {
+		retval = fsroot_crypto_encrypt_with_challenges(
+			&fs_crypto,
+			(const uint8_t *) file->buf, file->buf_len,
+			&encrypted, &encrypted_len);
+		written = write(fd, encrypted, encrypted_len);
+	} else {
+		log_i(fs->logger, "WARNING: No challenges were loaded. Data will be written as plaintext.\n");
+		written = write(fd, file->buf, file->buf_len);
+	}
+
 	pthread_rwlock_unlock(&file->rwlock);
+
 	fsync(fd);
 	close(fd);
 
 	mm_free(encrypted);
 	file->flags.is_synced = 1;
+
+	if (written == -1)
+		retval = FSROOT_E_SYSCALL;
 end:
 	return retval;
 }
@@ -379,10 +344,7 @@ static unsigned int __fsroot_close(fsroot_t *fs, struct fsroot_file *file)
 	pthread_rwlock_unlock(&open_files->rwlock);
 
 	/* If there are no open files left, unload all the challenges */
-	unload_challenges(fs->c);
-//	retval = fsroot_crypto_unload_challenge(&fs_crypto, challenge);
-//	if (retval != FSROOT_OK && retval != FSROOT_E_NOTFOUND)
-//		fprintf(stderr, "ERROR: Could not unload challenge '%s'\n", challenge);
+	fsroot_crypto_unload_all_challenges(&fs_crypto);
 
 end:
 	return num_deleted_files;
@@ -765,7 +727,7 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 
 	file->flags.is_synced = 0;
 	if (file->flags.sync)
-		fsroot_sync_file(fs, file);
+		retval = fsroot_sync_file(fs, file);
 
 end:
 	pthread_rwlock_unlock(&file->rwlock);
@@ -845,6 +807,7 @@ int fsroot_release(fsroot_t *fs, const char *path)
 	/* Finally delete the file from disk if it has to be deleted */
 	if (file->flags.tmpfile || file->flags.delete) {
 		if (fsroot_fullpath(fs->root_path, path, fullpath, sizeof(fullpath))) {
+			log_d(fs->logger, "fullpath: %s\n", fullpath);
 			if (unlink(fullpath) == 0) {
 				hash_table_remove(fs->files, path);
 				mm_free(file->path);
@@ -1227,6 +1190,8 @@ int fsroot_rename(fsroot_t *fs, const char *path, const char *newpath)
 	if (!fs->started)
 		return FSROOT_E_NOTSTARTED;
 
+	log_d(fs->logger, "fullpath: %s\n", full_newpath);
+
 	file = hash_table_get(fs->files, path);
 	if (!file)
 		return FSROOT_E_NOTEXISTS;
@@ -1340,6 +1305,8 @@ int fsroot_opendir(fsroot_t *fs, const char *path, void **outdir, int *error)
 	if (!fs->started)
 		return FSROOT_E_NOTSTARTED;
 
+	log_d(fs->logger, "fullpath: %s\n", fullpath);
+
 	dp = opendir(fullpath);
 	if (!dp)
 		return FSROOT_E_SYSCALL;
@@ -1389,10 +1356,12 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 			snprintf(path, sizeof(path), "/%s", de->d_name);
 
 		if (hash_table_contains(h->fs->files, path)) {
-			fprintf(stderr, "fsroot_readdir: Found path '%s'\n", path);
+			log_d(h->fs->logger, "fsroot_readdir: Found path '%s'\n", path);
+			// fprintf(stderr, "fsroot_readdir: Found path '%s'\n", path);
 			break;
 		} else {
-			fprintf(stderr, "fsroot_readdir: Path '%s' not in hash table\n", path);
+			log_d(h->fs->logger, "fsroot_readdir: Path '%s' not in hash table\n", path);
+			// fprintf(stderr, "fsroot_readdir: Path '%s' not in hash table\n", path);
 		}
 	}
 
@@ -1455,6 +1424,7 @@ static void __fsroot_deinit(fsroot_t *fs)
 	fs->open_files.num_files = 0;
 
 	if (fs->files) {
+		hash_table_lock(fs->files);
 		for (hash_table_iterate(fs->files, &iter); hash_table_iter_next(&iter);) {
 			__fsroot_release(fs, iter.value, 0);
 	//		hash_table_remove(fs->files, iter.key);
@@ -1462,6 +1432,7 @@ static void __fsroot_deinit(fsroot_t *fs)
 				mm_free(((struct fsroot_file *) iter.value)->path);
 			mm_free(iter.value);
 		}
+		hash_table_unlock(fs->files);
 
 		hash_table_destroy(fs->files);
 	}
@@ -1532,6 +1503,7 @@ int fsroot_persist(fsroot_t *fs, const char *filename)
 
 	/* We lock the files exclusively while we dump them to the DB */
 	pthread_rwlock_wrlock(&fs->open_files.rwlock);
+	hash_table_lock(fs->files);
 	for (hash_table_iterate(fs->files, &iter); hash_table_iter_next(&iter);) {
 		const char *path = iter.key;
 		struct fsroot_file *file = iter.value;
@@ -1540,6 +1512,7 @@ int fsroot_persist(fsroot_t *fs, const char *filename)
 		if (strcmp(path, "/"))
 			fsroot_db_add_file_entry(db, path, file);
 	}
+	hash_table_unlock(fs->files);
 	pthread_rwlock_unlock(&fs->open_files.rwlock);
 
 	return fsroot_db_close(&db);
@@ -1612,7 +1585,7 @@ int fsroot_set_config_file(fsroot_t *fs, const char *filename)
  * The length of the string \p root should be no greater than `PATH_MAX`, or
  * `FSROOT_E_NOMEM` is returned.
  */
-int fsroot_init(fsroot_t **fs)
+int fsroot_init(fsroot_t **fs, struct logger *l)
 {
 	fsroot_t *fsroot = NULL;
 
@@ -1622,6 +1595,7 @@ int fsroot_init(fsroot_t **fs)
 	/* Initialize the fsroot handle */
 	*fs = mm_new0(fsroot_t);
 	fsroot = *fs;
+	fsroot->logger = l;
 	fsroot->files = NULL;
 	memset(&fsroot->open_files, 0, sizeof(fsroot->open_files));
 

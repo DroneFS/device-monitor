@@ -8,12 +8,14 @@
 #define FSROOT_H_
 #include <linux/limits.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include "fsroot-return-codes.h"
+#include "log.h"
 
 struct _fsroot_st;
 typedef struct _fsroot_st fsroot_t;
 
-int fsroot_init(fsroot_t **);
+int fsroot_init(fsroot_t **, struct logger *);
 void fsroot_deinit(fsroot_t **);
 int fsroot_start(fsroot_t *, uid_t, gid_t, mode_t);
 int fsroot_persist(fsroot_t *, const char *filename);
