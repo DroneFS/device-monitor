@@ -13,7 +13,7 @@ START_TEST(test_fsroot_root_path_mkdir_failure)
 	fsroot_t *fs;
 	int retval;
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
@@ -35,7 +35,7 @@ START_TEST(test_fsroot_root_path_getattr)
 	int retval;
 	struct stat st;
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
@@ -59,7 +59,7 @@ START_TEST(test_fsroot_root_path_rmdir)
 	fsroot_t *fs;
 	int retval;
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 

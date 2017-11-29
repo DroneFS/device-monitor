@@ -33,7 +33,7 @@ START_TEST(test_fsroot_symlink)
 	int retval;
 	char path[PATH_MAX];
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);
@@ -68,7 +68,7 @@ START_TEST(test_fsroot_readlink)
 	char target[PATH_MAX];
 	size_t len = sizeof(target);
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);

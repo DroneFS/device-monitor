@@ -59,7 +59,7 @@ START_TEST(test_fsroot_readdir)
 		{ NULL, 0 }
 	};
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
@@ -122,7 +122,7 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 		{ NULL, 0 }
 	};
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
@@ -180,7 +180,7 @@ START_TEST(test_fsroot_readdir_empty)
 	char dirname[PATH_MAX];
 	size_t dirlen = sizeof(dirname);
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
@@ -215,7 +215,7 @@ START_TEST(test_fsroot_readdir_external_dir)
 	char dirname[PATH_MAX];
 	size_t dirlen = sizeof(dirname);
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);

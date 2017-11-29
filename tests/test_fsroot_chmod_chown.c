@@ -14,7 +14,7 @@ START_TEST(test_fsroot_chmod)
 	int retval, error = 0;
 	struct stat st;
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
@@ -51,7 +51,7 @@ START_TEST(test_fsroot_chown)
 	int retval, error = 0;
 	struct stat st;
 
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);

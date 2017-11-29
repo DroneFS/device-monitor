@@ -251,7 +251,7 @@ START_TEST(test_fsroot_persist)
 	ck_assert(mkdir(dir, 0744) != -1);
 
 	/* Initialize FSRoot */
-	retval = fsroot_init(&fs);
+	retval = fsroot_init(&fs, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);

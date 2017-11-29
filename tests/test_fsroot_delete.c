@@ -58,7 +58,7 @@ START_TEST(test_fsroot_delete_file_in_use)
 	int retval, err, foo_fd, bar_fd;
 	char *foo = "foo", *bar = "bar";
 
-	retval = fsroot_init(root_dir);
+	retval = fsroot_init(root_dir, NULL);
 	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
 			root_dir, retval);
 
