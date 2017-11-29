@@ -15,7 +15,11 @@ fuse_main_LDADD = libfsroot.la
 lib_LTLIBRARIES = libfsroot.la
 libfsroot_la_SOURCES = fsroot.c hash.c mm.c fsroot-path.c fsroot-crypto.c fsroot-db.c fsroot-config.c log.c
 libfsroot_la_CFLAGS = $(CFLAGS)
-libfsroot_la_LDFLAGS = -pthread -lsqlite3 -lgcrypt -llua5.1
+libfsroot_la_LDFLAGS = -pthread -lsqlite3 -llua5.1
+if HAVE_GCRYPT
+libfsroot_la_SOURCES += crypto-gcrypt.c
+libfsroot_la_LDFLAGS += -lgcrypt
+endif
 
 lib_LTLIBRARIES += libdch.la
 libdch_la_SOURCES = dummy-challenge.c

@@ -13,13 +13,30 @@ PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
 # FIXME These are probably temporary
 PKG_CHECK_MODULES([LUA], [lua-5.1 >= 5.1.5])
 PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.8])
-AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
-  [libgcrypt_available=yes],
-  [libgcrypt_available=no])
-if test "$libgcrypt_available" == "no"; then
-  echo "ERROR: libgcrypt was not found"
-  exit
+
+AC_ARG_WITH([openssl],
+  [AS_HELP_STRING([--with-openssl], [Use OpenSSL instead of libgcrypt])],
+  [crypto_lib=openssl],
+  [crypto_lib=gcrypt])
+if test "$crypto_lib" == "gcrypt"; then
+  AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
+    [libgcrypt_available=yes],
+    [libgcrypt_available=no])
+  if test "$libgcrypt_available" == "no"; then
+    echo "ERROR: libgcrypt was not found"
+    exit
+  fi
+else
+  AC_CHECK_LIB([crypto], [EVP_aes_128_cbc],
+    [openssl_available=yes],
+    [openssl_available=no])
+  if test "$openssl_available" == "no"; then
+    echo "ERROR: libcrypto (OpenSSL) was not found"
+    exit
+  fi
 fi
+
+AM_CONDITIONAL([HAVE_GCRYPT], [test "$crypto_lib" == "gcrypt"])
 
 AC_PROG_CC
 # This is needed for the '-std=gnu99' flag, which is also needed
