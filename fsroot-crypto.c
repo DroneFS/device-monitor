@@ -8,7 +8,7 @@
 #include <string.h>
 #include <limits.h>
 #include <dlfcn.h>
-#include "fsroot.h"
+#include "fsroot-return-codes.h"
 #include "fsroot-crypto.h"
 #include "crypto-internal.h"
 #include "mm.h"

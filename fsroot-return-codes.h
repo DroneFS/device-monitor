@@ -4,6 +4,9 @@
  *  Created on: 28 Jul 2017
  *      Author: Ander Juaristi
  */
+#ifndef __FSROOT_RETURN_CODES_H__
+#define __FSROOT_RETURN_CODES_H__
+
 #define FSROOT_OK_EXISTS	 2
 #define FSROOT_NOMORE		 1
 #define FSROOT_OK		 0
@@ -23,3 +26,5 @@
 #define FSROOT_E_NOTEMPTY	-14
 #define FSROOT_E_NOTFOUND	-15
 #define FSROOT_E_NOTSTARTED	-16
+
+#endif
