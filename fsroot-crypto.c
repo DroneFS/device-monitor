@@ -303,7 +303,7 @@ int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
 void fsroot_crypto_unload_all_challenges(fsroot_crypto_t *fsc)
 {
 	if (fsc->num_challenges > 0) {
-		for (size_t i = 0; i < fsc->num_slots; i++)
+		for (size_t i = 0; i < fsc->num_challenges; i++)
 			unload_challenge(fsc, i);
 		fsc->num_challenges = 0;
 	}
