@@ -14,30 +14,6 @@ PKG_CHECK_MODULES([CHECK], [check >= 0.9.6],
 PKG_CHECK_MODULES([LUA], [lua-5.1 >= 5.1.5])
 PKG_CHECK_MODULES([SQLITE], [sqlite3 >= 3.8])
 
-AC_ARG_WITH([openssl],
-  [AS_HELP_STRING([--with-openssl], [Use OpenSSL instead of libgcrypt])],
-  [crypto_lib=openssl],
-  [crypto_lib=gcrypt])
-if test "$crypto_lib" == "gcrypt"; then
-  AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
-    [libgcrypt_available=yes],
-    [libgcrypt_available=no])
-  if test "$libgcrypt_available" == "no"; then
-    echo "ERROR: libgcrypt was not found"
-    exit
-  fi
-else
-  AC_CHECK_LIB([crypto], [EVP_aes_128_cbc],
-    [openssl_available=yes],
-    [openssl_available=no])
-  if test "$openssl_available" == "no"; then
-    echo "ERROR: libcrypto (OpenSSL) was not found"
-    exit
-  fi
-fi
-
-AM_CONDITIONAL([HAVE_GCRYPT], [test "$crypto_lib" == "gcrypt"])
-
 AC_PROG_CC
 # This is needed for the '-std=gnu99' flag, which is also needed
 AC_PROG_CC_STDC
@@ -46,6 +22,39 @@ AM_PROG_AR
 AC_PROG_LIBTOOL
 
 LT_INIT
+
+AC_ARG_WITH([openssl],
+  [AS_HELP_STRING([--with-openssl], [Use OpenSSL instead of libgcrypt])],
+  [crypto_lib=openssl],
+  [crypto_lib=gcrypt])
+#
+# Check for the crypto library (currently either gcrypt or OpenSSL)
+#
+if test "$crypto_lib" == "gcrypt"; then
+  AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
+    [libgcrypt_available=yes],
+    [libgcrypt_available=no])
+else
+  AC_CHECK_LIB([crypto], [EVP_aes_128_cbc],
+    [openssl_available=yes],
+    [openssl_available=no])
+fi
+
+if test "$crypto_lib" == "gcrypt"; then
+  if test "$libgcrypt_available" == "no"; then
+    echo "ERROR: libgcrypt was not found"
+    exit
+  fi
+fi
+if test "$crypto_lib" == "openssl"; then
+  if test "$openssl_available" == "no"; then
+    echo "ERROR: libcrypto (OpenSSL) was not found"
+    exit
+  fi
+fi
+
+AM_CONDITIONAL([HAVE_GCRYPT], [test "$crypto_lib" == "gcrypt"])
+AM_CONDITIONAL([HAVE_OPENSSL], [test "$crypto_lib" == "openssl"])
 
 #
 # Check for 'check'
@@ -85,6 +94,7 @@ if ! test -d "$prefix"; then
 else
   echo " (OK)"
 fi
+echo "Crypto library: $crypto_lib"
 echo "Docs: $DOCS"
 echo "Unit tests: $TESTS"
 echo

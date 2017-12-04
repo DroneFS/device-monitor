@@ -20,6 +20,10 @@ if HAVE_GCRYPT
 libfsroot_la_SOURCES += crypto-gcrypt.c
 libfsroot_la_LDFLAGS += -lgcrypt
 endif
+if HAVE_OPENSSL
+libfsroot_la_SOURCES += crypto-openssl.c
+libfsroot_la_LDFLAGS += -lcrypto
+endif
 
 lib_LTLIBRARIES += libdch.la
 libdch_la_SOURCES = dummy-challenge.c
