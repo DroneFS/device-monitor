@@ -18,10 +18,11 @@
 #include <errno.h>
 #include <pthread.h>
 #include "fsroot.h"
+
+#include "configuration.h"
 #include "fsroot-internal.h"
 #include "fsroot-db.h"
 #include "fsroot-crypto.h"
-#include "fsroot-config.h"
 #include "hash.h"
 #include "log.h"
 #include "mm.h"

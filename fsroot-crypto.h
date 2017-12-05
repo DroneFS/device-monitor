@@ -7,7 +7,8 @@
 #ifndef __FSROOT_CRYPTO_H__
 #define __FSROOT_CRYPTO_H__
 #include <stdint.h>
-#include "fsroot-config.h"
+
+#include "configuration.h"
 
 struct fsroot_crypto_st
 {
