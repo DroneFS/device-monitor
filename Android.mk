@@ -1,15 +1,15 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES := crypto.c crypto-openssl.c mm.c list.c config-xml.c configuration.c
+LOCAL_SRC_FILES := crypto.c crypto-openssl.c mm.c list.c config-xml.c config-lua.c configuration.c
 LOCAL_MODULE := libchall
 LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror -DHAVE_LIBXML
+LOCAL_SHARED_LIBRARIES := libcrypto libxml2 libicuuc
+# Uncomment these for debugging:
 # LOCAL_CFLAGS += -ggdb
-LOCAL_SHARED_LIBRARIES := libchall
 # LOCAL_STRIP_MODULE = false
 
-include $(BUILD_EXECUTABLE)
+include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := dummy-challenge.c
