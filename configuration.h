@@ -6,6 +6,7 @@
  */
 #ifndef __FSROOT_CONFIG_H__
 #define __FSROOT_CONFIG_H__
+#include "list.h"
 
 #define CONFIG_NOMORE			1
 #define CONFIG_OK			0
@@ -17,8 +18,8 @@
 
 typedef struct config_st
 {
-	void (*deinit) (config_t **);
-	size_t (*get_challenges_list) (config_t *, list_head_t *);
+	void (*deinit) (struct config_st **);
+	size_t (*get_challenges_list) (struct config_st *, list_head_t *);
 
 	void *priv;
 } config_t;

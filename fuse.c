@@ -96,7 +96,7 @@ static int dm_fuse_getattr(const char *path, struct stat *st, struct fuse_file_i
 		return -EFAULT;
 
 	switch (fsroot_getattr(path, st)) {
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 	case FSROOT_E_BADFORMAT:
 		retval = -EFAULT;
 		break;
@@ -300,7 +300,7 @@ static int dm_fuse_open(const char *path, struct fuse_file_info *fi)
 
 	switch (fsroot_get_file(path, &file)) {
 	case FSROOT_E_BADFORMAT:
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
 	case FSROOT_E_LIBC:

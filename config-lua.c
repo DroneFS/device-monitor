@@ -35,10 +35,10 @@ int config_init_lua(config_t *c, const char *filename)
 {
 	lua_State *L = luaL_newstate();
 	if (!L)
-		return NULL;
+		return CONFIG_E_UNKNOWN_ERROR;
 
 	if (luaL_loadfile(L, filename) || lua_pcall(L, 0, 0, 0))
-		return NULL;
+		return CONFIG_E_UNKNOWN_ERROR;
 
 	c->deinit = config_deinit;
 	c->get_challenges_list = config_get_challenges_list;
@@ -197,8 +197,8 @@ static size_t config_get_challenges_list(config_t *c, list_head_t *h)
 		}
 	}
 
-	config_destroy_value(val);
-	config_destroy_value(it);
+	config_destroy_value(&val);
+	config_destroy_value(&it);
 
 	num_challenges = list_count(h);
 

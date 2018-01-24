@@ -7,8 +7,8 @@
 #include <string.h>
 #include <openssl/aes.h>
 #include "crypto-internal.h"
-#include "fsroot-return-codes.h"
 #include "mm.h"
+#include "return-codes.h"
 
 int encrypt_internal(const uint8_t *in, size_t in_len,
 		uint8_t **out, size_t *out_len,
@@ -19,10 +19,10 @@ int encrypt_internal(const uint8_t *in, size_t in_len,
 	unsigned char *tmp_iv;
 
 	if (keylen != AES_KEY_LENGTH)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	if (AES_set_encrypt_key(key, 128, &aes_key) != 0)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	tmp_iv = mm_malloc0(ivlen);
 	memcpy(tmp_iv, iv, ivlen);
@@ -37,7 +37,7 @@ int encrypt_internal(const uint8_t *in, size_t in_len,
 	AES_cbc_encrypt(in, *out, in_len, &aes_key, tmp_iv, AES_ENCRYPT);
 
 	mm_free(tmp_iv);
-	return FSROOT_OK;
+	return S_OK;
 }
 
 int decrypt_internal(const uint8_t *in, size_t in_len,
@@ -49,10 +49,10 @@ int decrypt_internal(const uint8_t *in, size_t in_len,
 	unsigned char *tmp_iv;
 
 	if (keylen != AES_KEY_LENGTH)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	if (AES_set_decrypt_key(key, 128, &aes_key) != 0)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	tmp_iv = mm_malloc0(ivlen);
 	memcpy(tmp_iv, iv, ivlen);
@@ -63,5 +63,5 @@ int decrypt_internal(const uint8_t *in, size_t in_len,
 	AES_cbc_encrypt(in, *out, in_len, &aes_key, tmp_iv, AES_DECRYPT);
 
 	mm_free(tmp_iv);
-	return FSROOT_OK;
+	return S_OK;
 }

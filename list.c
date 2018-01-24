@@ -47,8 +47,12 @@ void list_destroy(list_head_t *h, void (*destroyer_fn) (void **))
 	for (struct list_node_st *cur = h->first; cur; cur = next) {
 		next = cur->next;
 
-		if (cur->value && destroyer_fn)
-			destroyer_fn(&cur->value);
+		if (cur->value) {
+			if (destroyer_fn)
+				destroyer_fn(&cur->value);
+			else
+				free(cur->value);
+		}
 		free(cur);
 	}
 

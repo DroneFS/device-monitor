@@ -22,7 +22,7 @@
 #include "configuration.h"
 #include "fsroot-internal.h"
 #include "fsroot-db.h"
-#include "fsroot-crypto.h"
+#include "crypto.h"
 #include "hash.h"
 #include "log.h"
 #include "mm.h"
@@ -145,7 +145,7 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 
 		if (fsroot_crypto_decrypt_with_challenges(&fs_crypto,
 				(const uint8_t *) file->buf, (size_t) file->buf_len,
-				&decrypted, &decrypted_len) != FSROOT_OK)
+				&decrypted, &decrypted_len) != S_OK)
 			goto error;
 
 		/* Replace the original file contents with the decrypted contents */
@@ -212,7 +212,7 @@ end:
 
 static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 {
-	int retval = FSROOT_OK, fd;
+	int retval = S_OK, fd;
 	uint8_t *encrypted = NULL;
 	size_t encrypted_len = 0;
 	ssize_t written;
@@ -223,14 +223,14 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 
 	fd = open(file->path, O_WRONLY | O_EXCL);
 	if (fd == -1) {
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		goto end;
 	}
 
 	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
 		/* Load challenges */
 		if (fsroot_crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
-			return FSROOT_E_SYSCALL;
+			return E_SYSCALL;
 	}
 
 	pthread_rwlock_rdlock(&file->rwlock);
@@ -255,7 +255,7 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 	file->flags.is_synced = 1;
 
 	if (written == -1)
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 end:
 	return retval;
 }
@@ -354,7 +354,7 @@ end:
 static int __fsroot_release(fsroot_t *fs, struct fsroot_file *file, char strict)
 {
 	if (!__fsroot_close(fs, file) && strict)
-		return FSROOT_E_NOTOPEN;
+		return E_NOTOPEN;
 
 	if (file->buf) {
 		pthread_rwlock_wrlock(&file->rwlock);
@@ -365,7 +365,7 @@ static int __fsroot_release(fsroot_t *fs, struct fsroot_file *file, char strict)
 		pthread_rwlock_unlock(&file->rwlock);
 	}
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -398,43 +398,43 @@ static int __fsroot_release(fsroot_t *fs, struct fsroot_file *file, char strict)
  */
 int fsroot_create(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t mode, int flags, int *error_out)
 {
-	int error = 0, retval = FSROOT_OK, fd;
+	int error = 0, retval = S_OK, fd;
 	struct fsroot_file *file;
 
 	if (!fs || !path || !mode || !S_ISREG(mode))
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 	if (hash_table_contains(fs->files, path))
-		return FSROOT_E_EXISTS;
+		return E_EXISTS;
 
 	/* These flags are not valid, and we'll return an error if we find them */
 	if ((flags & O_ASYNC) == O_ASYNC) {
 		error = EINVAL;
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 	} else if ((flags & O_DIRECTORY) == O_DIRECTORY) {
 		/*
 		 * fsroot_create() is only used for regular files.
 		 * Directories are opened with fsroot_opendir().
 		 */
 		error = ENOTDIR;
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 	} else if ((flags & O_NOCTTY) == O_NOCTTY) {
 		error = EINVAL;
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 	} else if ((flags & O_NOFOLLOW) == O_NOFOLLOW) {
 		/* FIXME: O_NOFOLLOW should be ignored if O_PATH is present */
 		error = ELOOP;
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 	}
 
-	if (retval != FSROOT_OK)
+	if (retval != S_OK)
 		goto end;
 
 	file = fsroot_create_file(fs, path, uid, gid, mode);
 	if (!file) {
 		error = EINVAL;
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		goto end;
 	}
 	/*
@@ -488,7 +488,7 @@ int fsroot_create(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t m
 	fd = open(file->path, O_CREAT | O_EXCL | flags, 0100600);
 	if (fd == -1) {
 		error = errno;
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		goto end;
 	}
 
@@ -505,9 +505,9 @@ end:
 	 * Finally, if the file was correctly created,
 	 * generate a file descriptor for it.
 	 */
-	if (retval == FSROOT_OK) {
+	if (retval == S_OK) {
 		retval = __fsroot_open(&fs->open_files, file, flags);
-	} else if (retval == FSROOT_E_SYSCALL) {
+	} else if (retval == E_SYSCALL) {
 		if (error != 0 && error_out)
 			*error_out = error;
 		if (file) {
@@ -536,14 +536,14 @@ int fsroot_open(fsroot_t *fs, const char *path, int flags)
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	/* File must exist, due to a previous call to fsroot_create() */
 	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	return __fsroot_open(&fs->open_files, file, flags);
 }
@@ -580,15 +580,15 @@ int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int 
 	struct fsroot_file_descriptor *fildes;
 
 	if (!fs || !buf || !size || fd < 0)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	pthread_rwlock_rdlock(&fs->open_files.rwlock);
 
 	if (fd >= fs->open_files.num_files) {
 		pthread_rwlock_unlock(&fs->open_files.rwlock);
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	}
 
 	/*
@@ -600,7 +600,7 @@ int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int 
 
 	if (!fildes->can_read) {
 		/* ERROR: this file was not open for reading */
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		error = EBADF;
 		goto end;
 	}
@@ -613,10 +613,10 @@ int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int 
 		pthread_rwlock_unlock(&file->rwlock);
 
 		if (retval == -1) {
-			retval = FSROOT_E_SYSCALL;
+			retval = E_SYSCALL;
 			goto end;
 		} else if (retval == 0 && file->buf == NULL) {
-			error = FSROOT_EOF;
+			error = E_EOF;
 			goto end;
 		}
 	}
@@ -628,7 +628,7 @@ int fsroot_read(fsroot_t *fs, int fd, char *buf, size_t size, off_t offset, int 
 
 	retval = idx;
 	if (idx < size)
-		error = FSROOT_EOF;
+		error = E_EOF;
 
 end:
 	if (error_out && error != 0)
@@ -659,21 +659,21 @@ end:
  */
 int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offset, int *error_out)
 {
-	int retval = FSROOT_OK, error;
+	int retval = S_OK, error;
 	unsigned int idx;
 	struct fsroot_file *file;
 	struct fsroot_file_descriptor *fildes;
 
 	if (!fs || !buf || !size || fd < 0)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	pthread_rwlock_rdlock(&fs->open_files.rwlock);
 
 	if (fd >= fs->open_files.num_files) {
 		pthread_rwlock_unlock(&fs->open_files.rwlock);
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	}
 
 	/*
@@ -685,7 +685,7 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 
 	if (!fildes->can_write) {
 		/* ERROR: this file was not opened for writing */
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		error = EBADF;
 		goto end_nolock;
 	}
@@ -697,10 +697,10 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 		retval = fsroot_create_file_buffer(fs, file, &error);
 
 		if (retval == -1) {
-			retval = FSROOT_E_SYSCALL;
+			retval = E_SYSCALL;
 			goto end;
 		}
-		retval = FSROOT_OK;
+		retval = S_OK;
 	}
 
 	if (offset + size >= file->buf_len) {
@@ -733,9 +733,9 @@ int fsroot_write(fsroot_t *fs, int fd, const char *buf, size_t size, off_t offse
 end:
 	pthread_rwlock_unlock(&file->rwlock);
 end_nolock:
-	if (retval == FSROOT_OK)
+	if (retval == S_OK)
 		retval = idx;
-	else if (retval == FSROOT_E_SYSCALL && error_out)
+	else if (retval == E_SYSCALL && error_out)
 		*error_out = error;
 	return retval;
 }
@@ -755,13 +755,13 @@ int fsroot_sync(fsroot_t *fs, const char *path)
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	return fsroot_sync_file(fs, file);
 }
@@ -792,13 +792,13 @@ int fsroot_release(fsroot_t *fs, const char *path)
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file || !S_ISREG(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	if (!file->flags.is_synced)
 		fsroot_sync_file(fs, file);
@@ -814,10 +814,10 @@ int fsroot_release(fsroot_t *fs, const char *path)
 				mm_free(file->path);
 				mm_free(file);
 			} else {
-				retval = FSROOT_E_SYSCALL;
+				retval = E_SYSCALL;
 			}
 		} else {
-			retval = FSROOT_E_BADARGS;
+			retval = E_BADARGS;
 		}
 	}
 
@@ -844,17 +844,17 @@ int fsroot_release(fsroot_t *fs, const char *path)
  */
 int fsroot_delete(fsroot_t *fs, const char *path)
 {
-	int retval = FSROOT_OK, is_open = 0;
+	int retval = S_OK, is_open = 0;
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	/*
 	 * This is only for regular files.
@@ -862,7 +862,7 @@ int fsroot_delete(fsroot_t *fs, const char *path)
 	 * will be rejected.
 	 */
 	if (!S_ISREG(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	/*
 	 * Walk over all the open file descriptors to see
@@ -890,7 +890,7 @@ int fsroot_delete(fsroot_t *fs, const char *path)
 			mm_free(file->path);
 			mm_free(file);
 		} else {
-			retval = FSROOT_E_SYSCALL;
+			retval = E_SYSCALL;
 		}
 	}
 
@@ -924,22 +924,22 @@ int fsroot_getattr(fsroot_t *fs, const char *path, struct stat *out_st)
 	struct fsroot_file *file;
 
 	if (!fs || !path || !out_st)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	if (lstat(file->path, out_st) == -1)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	out_st->st_mode = file->mode;
 	out_st->st_uid = file->uid;
 	out_st->st_gid = file->gid;
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -970,28 +970,28 @@ int fsroot_symlink(fsroot_t *fs, const char *linkpath, const char *target, uid_t
 	struct fsroot_file *file = NULL;
 
 	if (!fs || !linkpath || !target)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 	if (!S_ISLNK(mode)) /* This is not a symlink! */
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	if (hash_table_contains(fs->files, linkpath))
-		return FSROOT_E_EXISTS;
+		return E_EXISTS;
 
 	file = fsroot_create_file(fs, linkpath, uid, gid, mode);
 	if (!file)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	if (strlen(target) >= LONG_MAX)
-		return FSROOT_E_NOMEM;
+		return E_NOMEM;
 	if (symlink(target, file->path) == -1)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	/* At this point symlink was created successfully, so we register it in our hash table */
 	hash_table_put(fs->files, strdup(linkpath), file);
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /*
@@ -1010,22 +1010,22 @@ int fsroot_symlink_delete(fsroot_t *fs, const char *linkpath)
 	struct fsroot_file *file;
 
 	if (!fs || !linkpath)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, linkpath);
 	if (!file || !S_ISLNK(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	if (unlink(file->path) == -1)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	hash_table_remove(fs->files, linkpath);
 	mm_free(file->path);
 	mm_free(file);
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -1052,31 +1052,31 @@ int fsroot_readlink(fsroot_t *fs, const char *linkpath, char *dst, size_t *dstle
 	struct fsroot_file *file;
 
 	if (!fs || !linkpath || !dst || !dstlen)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, linkpath);
 	if (file == NULL || !S_ISLNK(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	if (lstat(file->path, &st) == -1)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 	if (st.st_size >= LONG_MAX)
-		return FSROOT_E_NOMEM;
+		return E_NOMEM;
 
 	required_size = st.st_size + 1;
 	if (*dstlen < required_size) {
 		*dstlen = required_size;
-		return FSROOT_E_NOMEM;
+		return E_NOMEM;
 	}
 
 	actual_len = readlink(file->path, dst, *dstlen);
 	if (actual_len == -1)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	dst[actual_len] = 0;
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -1103,28 +1103,28 @@ int fsroot_mkdir(fsroot_t *fs, const char *path, uid_t uid, gid_t gid, mode_t mo
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 	if (!S_ISDIR(mode)) /* This is not a directory! */
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	if (hash_table_contains(fs->files, path))
-		return FSROOT_E_EXISTS;
+		return E_EXISTS;
 
 	file = fsroot_create_file(fs, path, uid, gid, mode);
 	if (!file)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (mkdir(file->path, S_IFDIR | 0700) == -1)
 		goto error;
 
 	hash_table_put(fs->files, strdup(path), file);
 
-	return FSROOT_OK;
+	return S_OK;
 error:
 	mm_free(file->path);
 	mm_free(file);
-	return FSROOT_E_SYSCALL;
+	return E_SYSCALL;
 }
 
 /**
@@ -1141,25 +1141,25 @@ error:
  */
 int fsroot_rmdir(fsroot_t *fs, const char *path)
 {
-	int retval = FSROOT_OK;
+	int retval = S_OK;
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 	/* Obviously we loudly complain if someone tries to remove the root dir */
 	if (path[0] == '/' && path[1] == 0)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	file = hash_table_get(fs->files, path);
 	if (file == NULL || !S_ISDIR(file->mode))
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	if (rmdir(file->path) == -1)
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 
-	if (retval == FSROOT_OK) {
+	if (retval == S_OK) {
 		hash_table_remove(fs->files, path);
 		mm_free(file->path);
 		mm_free(file);
@@ -1187,21 +1187,21 @@ int fsroot_rename(fsroot_t *fs, const char *path, const char *newpath)
 	char full_newpath[PATH_MAX];
 
 	if (!fs || !path || !newpath || !fsroot_fullpath(fs->root_path, newpath, full_newpath, sizeof(full_newpath)))
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	log_d(fs->logger, "fullpath: %s\n", full_newpath);
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	if (hash_table_contains(fs->files, newpath))
-		return FSROOT_E_EXISTS;
+		return E_EXISTS;
 
 	if (rename(file->path, full_newpath) == -1)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	/* TODO maybe these should should be performed atomically */
 	hash_table_remove(fs->files, path);
@@ -1210,7 +1210,7 @@ int fsroot_rename(fsroot_t *fs, const char *path, const char *newpath)
 	strcpy((char *) file->path, full_newpath);
 	hash_table_put(fs->files, strdup(newpath), file);
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -1235,23 +1235,23 @@ int fsroot_chmod(fsroot_t *fs, const char *path, mode_t mode)
 	mode_t filetype = mode & S_IFMT;
 
 	if (!fs || !path || !filetype)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	/*
 	 * Check that the user is not trying to change file type
 	 * eg. directory to regular file
 	 */
 	if (filetype && ((file->mode & S_IFMT) != filetype))
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	file->mode = mode;
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -1269,17 +1269,17 @@ int fsroot_chown(fsroot_t *fs, const char *path, uid_t uid, gid_t gid)
 	struct fsroot_file *file;
 
 	if (!fs || !path)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	file = hash_table_get(fs->files, path);
 	if (!file)
-		return FSROOT_E_NOTEXISTS;
+		return E_NOTEXISTS;
 
 	file->uid = uid;
 	file->gid = gid;
-	return FSROOT_OK;
+	return S_OK;
 }
 
 struct fsroot_opendir_handle {
@@ -1302,15 +1302,15 @@ int fsroot_opendir(fsroot_t *fs, const char *path, void **outdir, int *error)
 	DIR *dp;
 
 	if (!fs || !path || !outdir || !fsroot_fullpath(fs->root_path, path, fullpath, sizeof(fullpath)))
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	log_d(fs->logger, "fullpath: %s\n", fullpath);
 
 	dp = opendir(fullpath);
 	if (!dp)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	dir = hash_table_get(fs->files, path);
 	if (dir && S_ISDIR(dir->mode)) {
@@ -1319,9 +1319,9 @@ int fsroot_opendir(fsroot_t *fs, const char *path, void **outdir, int *error)
 		h->dp = dp;
 		h->prefix = strdup(path);
 		*outdir = h;
-		retval = FSROOT_OK;
+		retval = S_OK;
 	} else {
-		retval = FSROOT_E_NOTEXISTS;
+		retval = E_NOTEXISTS;
 	}
 
 	return retval;
@@ -1336,7 +1336,7 @@ int fsroot_readdir(void *dir, char *out, size_t outlen, int *err)
 	char path[PATH_MAX];
 
 	if (!h || !h->dp || !h->fs || !out || !outlen)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	if (h->last_dir) {
 		source = h->last_dir;
@@ -1373,13 +1373,13 @@ return_dir:
 	if (strlen(source) >= outlen) {
 		if (!h->last_dir)
 			h->last_dir = strdup(de->d_name);
-		return FSROOT_E_NOMEM;
+		return E_NOMEM;
 	}
 
 	strncpy(out, source, outlen);
 	if (h->last_dir)
 		mm_free(h->last_dir);
-	return FSROOT_OK;
+	return S_OK;
 
 error:
 	/*
@@ -1388,11 +1388,11 @@ error:
 	 * Else it just means there are no more files in the directory.
 	 */
 	if (initial_errno == errno) {
-		return FSROOT_NOMORE;
+		return S_NOMORE;
 	} else {
 		if (err)
 			*err = errno;
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 	}
 }
 
@@ -1442,7 +1442,7 @@ static void __fsroot_deinit(fsroot_t *fs)
 	pthread_rwlock_destroy(&fs->open_files.rwlock);
 
 	/* Unload configuration */
-	config_deinit(&fs->c);
+	fs->c->deinit(&fs->c);
 	fs->started = 0;
 }
 
@@ -1451,6 +1451,7 @@ void fsroot_deinit(fsroot_t **fs)
 	if (fs && *fs) {
 		__fsroot_deinit(*fs);
 		mm_free((*fs)->database_file);
+		mm_free((*fs)->c);
 		mm_free(*fs);
 		fsroot_crypto_deinit(&fs_crypto);
 	}
@@ -1480,26 +1481,26 @@ int fsroot_persist(fsroot_t *fs, const char *filename)
 	hash_table_iterator iter;
 
 	if (!fs || !filename || !*filename)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (!fs->started)
-		return FSROOT_E_NOTSTARTED;
+		return E_NOTSTARTED;
 
 	retval = fsroot_db_create(filename);
-	if (retval == FSROOT_E_EXISTS) {
+	if (retval == E_EXISTS) {
 		/*
 		 * Database file already exists.
 		 * Try to delete it and call fsroot_db_create() again.
 		 */
 		if (unlink(filename) == -1)
-			return FSROOT_E_EXISTS;
+			return E_EXISTS;
 
 		retval = fsroot_db_create(filename);
 	}
-	if (retval != FSROOT_OK)
+	if (retval != S_OK)
 		return retval;
 
 	retval = fsroot_db_open(filename, &db);
-	if (retval != FSROOT_OK)
+	if (retval != S_OK)
 		return retval;
 
 	/* We lock the files exclusively while we dump them to the DB */
@@ -1533,18 +1534,18 @@ int fsroot_persist(fsroot_t *fs, const char *filename)
 int fsroot_set_database_file(fsroot_t *fs, const char *filename)
 {
 	if (!fs)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	if (!filename || !*filename) {
 		if (fs->database_file)
 			mm_free(fs->database_file);
 	} else {
 		if (strlen(filename) > PATH_MAX)
-			return FSROOT_E_NOMEM;
+			return E_NOMEM;
 		fs->database_file = strdup(filename);
 	}
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -1561,20 +1562,26 @@ int fsroot_set_root_directory(fsroot_t *fs, const char *dir)
 	size_t root_path_len = 0;
 
 	if (!fs || !dir || !*dir)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	root_path_len = strlen(dir);
 	if (root_path_len > PATH_MAX)
-		return FSROOT_E_NOMEM;
+		return E_NOMEM;
 
 	strcpy(fs->root_path, dir);
-	return FSROOT_OK;
+	return S_OK;
 }
 
 int fsroot_set_config_file(fsroot_t *fs, const char *filename)
 {
-	fs->c = config_init(filename);
-	return (fs->c ? FSROOT_OK : FSROOT_E_UNKNOWN);
+	fs->c = mm_new0(config_t);
+
+	if (config_init(fs->c, filename) == CONFIG_OK) {
+		return S_OK;
+	} else {
+		mm_free(fs->c);
+		return E_UNKNOWN;
+	}
 }
 
 /**
@@ -1591,7 +1598,7 @@ int fsroot_init(fsroot_t **fs, struct logger *l)
 	fsroot_t *fsroot = NULL;
 
 	if (!fs)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	/* Initialize the fsroot handle */
 	*fs = mm_new0(fsroot_t);
@@ -1611,24 +1618,24 @@ int fsroot_init(fsroot_t **fs, struct logger *l)
 
 	fsroot_crypto_init(&fs_crypto);
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 static int check_root_dir_is_empty(fsroot_t *fs)
 {
 	int finish = 0,
 		errno_saved = errno,
-		retval = FSROOT_E_UNKNOWN;
+		retval = E_UNKNOWN;
 	struct dirent *de;
 	DIR *dp = opendir(fs->root_path);
 
 	if (!dp) {
 		if (errno == ENOENT)
-			return FSROOT_E_NOTEXISTS;
+			return E_NOTEXISTS;
 		else if (errno == ENOTDIR)
-			return FSROOT_E_NOT_DIRECTORY;
+			return E_NOT_DIRECTORY;
 		else
-			return FSROOT_E_SYSCALL;
+			return E_SYSCALL;
 	}
 
 	while (!finish) {
@@ -1636,7 +1643,7 @@ static int check_root_dir_is_empty(fsroot_t *fs)
 
 		if (de && strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 			finish = 1;
-			retval = FSROOT_E_NOTEMPTY;
+			retval = E_NOTEMPTY;
 		} else if (!de) {
 			finish = 1;
 			/*
@@ -1644,8 +1651,8 @@ static int check_root_dir_is_empty(fsroot_t *fs)
 			 * in this directory
 			 */
 			retval = (errno_saved == errno ?
-				  FSROOT_OK :
-				  FSROOT_E_SYSCALL);
+				  S_OK :
+				  E_SYSCALL);
 		}
 	}
 
@@ -1655,19 +1662,19 @@ static int check_root_dir_is_empty(fsroot_t *fs)
 
 static int load_from_database(fsroot_t *fs, fsroot_db_t *db)
 {
-	int retval = FSROOT_E_UNKNOWN;
+	int retval = E_UNKNOWN;
 	fsroot_db_iter_t *it = NULL;
 	char *filename = NULL;
 	struct fsroot_file file, *pfile;
 
 	retval = fsroot_db_iter_init(&it, db);
-	if (retval != FSROOT_OK)
+	if (retval != S_OK)
 		return retval;
 
 	do {
 		retval = fsroot_db_iter_next(it, &filename, &file);
 
-		if (retval == FSROOT_OK) {
+		if (retval == S_OK) {
 			pfile = fsroot_create_file(fs,
 					filename,
 					file.uid,
@@ -1676,29 +1683,29 @@ static int load_from_database(fsroot_t *fs, fsroot_db_t *db)
 			if (pfile)
 				hash_table_put(fs->files, filename, pfile);
 		}
-	} while (retval == FSROOT_OK);
+	} while (retval == S_OK);
 
 	fsroot_db_iter_deinit(&it);
-	return (retval == FSROOT_NOMORE ?
-		FSROOT_OK :
+	return (retval == S_NOMORE ?
+		S_OK :
 		retval);
 }
 
 int fsroot_start(fsroot_t *fs, uid_t root_uid, gid_t root_gid, mode_t root_mode)
 {
-	int retval = FSROOT_OK;
+	int retval = S_OK;
 	struct stat st;
 	struct fsroot_file *root_dir = NULL;
 	fsroot_db_t *db = NULL;
 
 	/* Initialize the root directory */
 	if (!fs->root_path[0])
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (stat(fs->root_path, &st) == -1 || !S_ISDIR(st.st_mode))
-		return FSROOT_E_NOT_DIRECTORY;
+		return E_NOT_DIRECTORY;
 
 	if (!S_ISDIR(root_mode))
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	root_dir = mm_new0(struct fsroot_file);
 	root_dir->path = strdup(fs->root_path);
@@ -1713,17 +1720,17 @@ int fsroot_start(fsroot_t *fs, uid_t root_uid, gid_t root_gid, mode_t root_mode)
 	 * than the root directory).
 	 */
 	if (fs->database_file) {
-		if (fsroot_db_create(fs->database_file) == FSROOT_E_EXISTS) {
-			if (fsroot_db_open(fs->database_file, &db) == FSROOT_OK) {
+		if (fsroot_db_create(fs->database_file) == E_EXISTS) {
+			if (fsroot_db_open(fs->database_file, &db) == S_OK) {
 				load_from_database(fs, db);
 				fsroot_db_close(&db);
 			} else {
-				retval = FSROOT_E_NODB;
+				retval = E_NODB;
 			}
 		}
 	}
 
-	if (retval == FSROOT_OK)
+	if (retval == S_OK)
 		fs->started = 1;
 	return retval;
 }

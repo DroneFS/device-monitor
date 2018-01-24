@@ -15,27 +15,27 @@ START_TEST(test_fsroot_chmod)
 	struct stat st;
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	retval = fsroot_create(fs, "foo", 1000, 1000, 0100700, 0, &error);
 	ck_assert_msg(retval >= 0 && error == 0, "fsroot_create(\"foo\") returned %d (error: %d)\n", retval, error);
 	retval = fsroot_release(fs, "foo");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"foo\") returned %d\n", retval);
 
 	retval = fsroot_getattr(fs, "foo", &st);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
 	ck_assert_int_eq(st.st_mode, 0100700);
 	ck_assert_int_eq(st.st_uid, 1000);
 	ck_assert_int_eq(st.st_gid, 1000);
 
 	retval = fsroot_chmod(fs, "foo", 0110700);
-	ck_assert_msg(retval == FSROOT_E_BADARGS, "fsroot_chmod(\"foo\") returned %d (should return FSROOT_E_BADARGS)\n", retval);
+	ck_assert_msg(retval == E_BADARGS, "fsroot_chmod(\"foo\") returned %d (should return FSROOT_E_BADARGS)\n", retval);
 	retval = fsroot_chmod(fs, "foo", 0100704);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_chmod(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_chmod(\"foo\") returned %d\n", retval);
 	retval = fsroot_getattr(fs, "foo", &st);
 	ck_assert_int_eq(st.st_mode, 0100704);
 	ck_assert_int_eq(st.st_uid, 1000);
@@ -52,28 +52,28 @@ START_TEST(test_fsroot_chown)
 	struct stat st;
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	retval = fsroot_create(fs, "foo", 1000, 1000, 0100700, 0, &error);
 	ck_assert_msg(retval >= 0 && error == 0, "fsroot_create(\"foo\") returned %d (error: %d)\n", retval, error);
 	retval = fsroot_release(fs, "foo");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"foo\") returned %d\n", retval);
 
 	retval = fsroot_getattr(fs, "foo", &st);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
 	ck_assert_int_eq(st.st_mode, 0100700);
 	ck_assert_int_eq(st.st_uid, 1000);
 	ck_assert_int_eq(st.st_gid, 1000);
 
 	retval = fsroot_chown(fs, "foo", 2000, 500);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_chown(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_chown(\"foo\") returned %d\n", retval);
 
 	retval = fsroot_getattr(fs, "foo", &st);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
 	ck_assert_int_eq(st.st_mode, 0100700);
 	ck_assert_int_eq(st.st_uid, 2000);
 	ck_assert_int_eq(st.st_gid, 500);

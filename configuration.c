@@ -4,6 +4,7 @@
  *  Created on: 5 Dec 2017
  *      Author: Ander Juaristi
  */
+#include <string.h>
 #include "configuration.h"
 
 int config_init(config_t *c, const char *filename)
@@ -15,7 +16,7 @@ int config_init(config_t *c, const char *filename)
 
 	p = strrchr(filename, '.');
 
-	if (!p || !strncmp(p, ".lua", 4))
+	if (!p || strncmp(p, ".lua", 4))
 		return config_init_xml(c, filename);
 	else
 		return config_init_lua(c, filename);

@@ -77,9 +77,9 @@ void release_foo_and_bar(fsroot_t *fs, char with_trailing_slash)
 	ck_assert(snprintf(bar_fullpath, sizeof(bar_fullpath), "%s/bar", dir) > 0);
 
 	retval = fsroot_release(fs, foo_path);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"foo\") returned %d\n", retval);
 	retval = fsroot_release(fs, bar_path);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"bar\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"bar\") returned %d\n", retval);
 
 	ck_assert_msg(stat(foo_fullpath, &st) == 0, "stat(\"%s\") failed\n", foo_fullpath);
 	ck_assert_msg(S_ISREG(st.st_mode), "File '%s' should be a regular file\n", foo_fullpath);
@@ -93,11 +93,11 @@ START_TEST(test_fsroot_create)
 	int retval;
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	create_foo_and_bar(fs, 0);
 	release_foo_and_bar(fs, 0);
@@ -110,11 +110,11 @@ START_TEST(test_fsroot_create_with_trailing_slash)
 {
 	fsroot_t *fs;
 	int retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	create_foo_and_bar(fs, 1);
 	release_foo_and_bar(fs, 1);
@@ -132,11 +132,11 @@ START_TEST(test_fsroot_open)
 	size_t bufsize = sizeof(buf);
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	create_foo_and_bar(fs, 0);
 	release_foo_and_bar(fs, 0);
@@ -160,9 +160,9 @@ START_TEST(test_fsroot_open)
 	ck_assert_str_eq(buf, bar_data);
 
 	retval = fsroot_release(fs, "foo");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"foo\") returned %d\n", retval);
 	retval = fsroot_release(fs, "bar");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"bar\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"bar\") returned %d\n", retval);
 
 	fsroot_deinit(&fs);
 }
@@ -177,11 +177,11 @@ START_TEST(test_fsroot_open_with_trailing_slash)
 	size_t bufsize = sizeof(buf);
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	create_foo_and_bar(fs, 1);
 	release_foo_and_bar(fs, 1);
@@ -205,9 +205,9 @@ START_TEST(test_fsroot_open_with_trailing_slash)
 	ck_assert_str_eq(buf, bar_data);
 
 	retval = fsroot_release(fs, "/foo");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"/foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"/foo\") returned %d\n", retval);
 	retval = fsroot_release(fs, "/bar");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"/bar\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"/bar\") returned %d\n", retval);
 
 	fsroot_deinit(&fs);
 }

@@ -11,12 +11,12 @@ START_TEST(test_fsroot_delete_file_released)
 	char *foo = "foo", *bar = "bar";
 
 	retval = fsroot_init(&fs, root_dir);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n",
 			root_dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	create_file(foo);
 	release_file(foo);
@@ -24,7 +24,7 @@ START_TEST(test_fsroot_delete_file_released)
 	release_file(bar);
 
 	retval = fsroot_delete(fs, foo);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_delete(\"%s\") returned %d\n",
+	ck_assert_msg(retval == S_OK, "fsroot_delete(\"%s\") returned %d\n",
 			foo, retval);
 
 	check_file(foo, (const struct check_file_opts *) {
@@ -37,7 +37,7 @@ START_TEST(test_fsroot_delete_file_released)
 	});
 
 	retval = fsroot_delete(bar);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_delete(\"%s\") returned %d\n",
+	ck_assert_msg(retval == S_OK, "fsroot_delete(\"%s\") returned %d\n",
 			bar, retval);
 
 	check_file(foo, (const struct check_file_opts *) {
@@ -59,7 +59,7 @@ START_TEST(test_fsroot_delete_file_in_use)
 	char *foo = "foo", *bar = "bar";
 
 	retval = fsroot_init(root_dir, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n",
 			root_dir, retval);
 
 	foo_fd = create_file(foo, O_RDWR);
@@ -70,10 +70,10 @@ START_TEST(test_fsroot_delete_file_in_use)
 			foo, get_fsroot_error_str(retval), get_errno_str(err));
 
 	retval = fsroot_delete(foo);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_delete(\"%s\") returned %s\n",
+	ck_assert_msg(retval == S_OK, "fsroot_delete(\"%s\") returned %s\n",
 			foo, get_fsroot_error_str(retval));
 	retval = fsroot_delete(bar);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_delete(\"%s\") returned %s\n",
+	ck_assert_msg(retval == S_OK, "fsroot_delete(\"%s\") returned %s\n",
 			bar, get_fsroot_error_str(retval));
 
 	check_file(foo, {

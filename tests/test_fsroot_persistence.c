@@ -81,10 +81,10 @@ START_TEST(test_persist_non_existing_file)
 		unlink(DB_FILE);
 
 	retval = fsroot_db_open(DB_FILE, &db);
-	ck_assert_msg(retval == FSROOT_E_NOTEXISTS, "fsroot_db_open('%s') returned %d (should return %d)",
+	ck_assert_msg(retval == E_NOTEXISTS, "fsroot_db_open('%s') returned %d (should return %d)",
 		      DB_FILE,
 		      retval,
-		      FSROOT_E_NOTEXISTS);
+		      E_NOTEXISTS);
 }
 END_TEST
 
@@ -100,10 +100,10 @@ START_TEST(test_persist_non_existing_schema)
 	close(fd);
 
 	retval = fsroot_db_open(DB_FILE, &db);
-	ck_assert_msg(retval == FSROOT_E_NOTINITIALIZED, "fsroot_db_open('%s') returned %d (should return %d)",
+	ck_assert_msg(retval == E_NOTINITIALIZED, "fsroot_db_open('%s') returned %d (should return %d)",
 		      DB_FILE,
 		      retval,
-		      FSROOT_E_NOTINITIALIZED);
+		      E_NOTINITIALIZED);
 }
 END_TEST
 
@@ -120,19 +120,19 @@ START_TEST(test_persist_wrong_attrs)
 	close(fd);
 
 	retval = fsroot_db_open(DB_FILE, &db);
-	ck_assert_msg(retval == FSROOT_E_NOTEXISTS, "fsroot_db_open('%s') returned %d (should return %d)",
+	ck_assert_msg(retval == E_NOTEXISTS, "fsroot_db_open('%s') returned %d (should return %d)",
 		      DB_FILE,
 		      retval,
-		      FSROOT_E_NOTEXISTS);
+		      E_NOTEXISTS);
 
 	/* Change the permissions to write-only */
 	ck_assert_msg(chmod(DB_FILE, 0200) != -1, "Could not chmod file '%s' to 0200", DB_FILE);
 
 	retval = fsroot_db_open(DB_FILE, &db);
-	ck_assert_msg(retval == FSROOT_E_NOTEXISTS, "fsroot_db_open('%s') returned %d (should return %d)",
+	ck_assert_msg(retval == E_NOTEXISTS, "fsroot_db_open('%s') returned %d (should return %d)",
 		      DB_FILE,
 		      retval,
-		      FSROOT_E_NOTEXISTS);
+		      E_NOTEXISTS);
 }
 END_TEST
 
@@ -148,10 +148,10 @@ START_TEST(test_persist_update_existing_file)
 	struct fsroot_file *file;
 
 	retval = fsroot_db_create(DB_FILE);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_create('%s') returned %d", DB_FILE, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_create('%s') returned %d", DB_FILE, retval);
 
 	retval = fsroot_db_open(DB_FILE, &db);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_open('%s') returned %d", DB_FILE, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_open('%s') returned %d", DB_FILE, retval);
 	ck_assert(db != NULL);
 
 	file = mm_new0(struct fsroot_file);
@@ -159,16 +159,16 @@ START_TEST(test_persist_update_existing_file)
 	file->uid = 1000;
 	file->gid = 1000;
 	retval = fsroot_db_add_file_entry(db, "foo_file", file);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_add_file_entry() returned %d (should return %d)",
-		      retval, FSROOT_OK);
+	ck_assert_msg(retval == S_OK, "fsroot_db_add_file_entry() returned %d (should return %d)",
+		      retval, S_OK);
 
 	file->mode = 0400;
 	file->gid = 1001;
 	retval = fsroot_db_add_file_entry(db, "foo_file", file);
-	ck_assert_msg(retval == FSROOT_OK_EXISTS, "fsroot_db_add_file_entry() returned %d "
-		      "(should return FSROOT_OK_EXISTS (%d))", retval, FSROOT_OK_EXISTS);
+	ck_assert_msg(retval == S_EXISTS, "fsroot_db_add_file_entry() returned %d "
+		      "(should return FSROOT_OK_EXISTS (%d))", retval, S_EXISTS);
 
-	ck_assert(fsroot_db_close(&db) == FSROOT_OK);
+	ck_assert(fsroot_db_close(&db) == S_OK);
 	mm_free(file);
 }
 END_TEST
@@ -187,7 +187,7 @@ START_TEST(test_persist_appropriate_attrs)
 	if (access(DB_FILE, F_OK) == 0)
 		unlink(DB_FILE);
 
-	ck_assert(fsroot_db_create(DB_FILE) == FSROOT_OK);
+	ck_assert(fsroot_db_create(DB_FILE) == S_OK);
 
 	ck_assert(stat(DB_FILE, &st) == 0);
 	ck_assert_msg(st.st_uid == uid, "UID is %d (should be %d)", st.st_uid, uid);
@@ -210,11 +210,11 @@ START_TEST(test_persist)
 
 	/* Create a new database file */
 	retval = fsroot_db_create(DB_FILE);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_create('%s') returned %d", DB_FILE, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_create('%s') returned %d", DB_FILE, retval);
 
 	/* Open database file and insert some entries */
 	retval = fsroot_db_open(DB_FILE, &db);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_open('%s') returned %d", DB_FILE, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_open('%s') returned %d", DB_FILE, retval);
 	ck_assert(db != NULL);
 
 	file[0] = mm_new0(struct fsroot_file);
@@ -222,16 +222,16 @@ START_TEST(test_persist)
 	file[0]->uid = 1000;
 	file[0]->gid = 1000;
 	retval = fsroot_db_add_file_entry(db, "file_1", file[0]);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_add_file_entry() returned %d", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_add_file_entry() returned %d", retval);
 
 	file[1] = mm_new0(struct fsroot_file);
 	file[1]->mode = 0777;
 	file[1]->uid = 2000;
 	file[1]->gid = 2000;
 	retval = fsroot_db_add_file_entry(db, "file_2", file[1]);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_add_file_entry() returned %d", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_add_file_entry() returned %d", retval);
 
-	ck_assert(fsroot_db_close(&db) == FSROOT_OK);
+	ck_assert(fsroot_db_close(&db) == S_OK);
 
 	/* Check entries */
 	check_sqlite_entries(DB_FILE, 4, "file_1", file[0], "file_2", file[1]);
@@ -252,15 +252,15 @@ START_TEST(test_fsroot_persist)
 
 	/* Initialize FSRoot */
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init() returned %d\n", retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	/* Create the database file */
 	retval = fsroot_db_create(DB_FILE);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_db_create('%s') returned %d", DB_FILE, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_db_create('%s') returned %d", DB_FILE, retval);
 
 	/* Create some files in FSRoot */
 	fd[0] = fsroot_create(fs, "file_0", 1000, 1000, 0100700, O_CREAT | O_RDWR, &err);
@@ -271,13 +271,13 @@ START_TEST(test_fsroot_persist)
 		      fd[1], err);
 
 	retval = fsroot_release(fs, "file_0");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release('file_0') returned %d", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release('file_0') returned %d", retval);
 	retval = fsroot_release(fs, "file_1");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release('file_1') returned %d", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release('file_1') returned %d", retval);
 
 	/* Persist files to database */
 	retval = fsroot_persist(fs, DB_FILE);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_persist('%s') returned %d", DB_FILE, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_persist('%s') returned %d", DB_FILE, retval);
 
 	fsroot_deinit(&fs);
 

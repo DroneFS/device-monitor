@@ -7,7 +7,7 @@
 #include <stdarg.h>
 #include "log.h"
 #include "mm.h"
-#include "fsroot-return-codes.h"
+#include "return-codes.h"
 
 void log_init(struct logger **l)
 {

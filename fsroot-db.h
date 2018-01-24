@@ -7,7 +7,7 @@
 #ifndef __FSROOT_DB_H__
 #define __FSROOT_DB_H__
 #include "fsroot-internal.h"
-#include "fsroot-return-codes.h"
+#include "return-codes.h"
 
 struct fsroot_db_st;
 typedef struct fsroot_db_st fsroot_db_t;

@@ -18,9 +18,9 @@ struct expected_dir
 void create_dir_tree(fsroot_t *fs)
 {
 	mode_t dirmode = 0040700;
-	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, dirmode), FSROOT_OK);
-	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_1", 1000, 1000, dirmode), FSROOT_OK);
-	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_2", 1000, 1000, dirmode), FSROOT_OK);
+	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, dirmode), S_OK);
+	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_1", 1000, 1000, dirmode), S_OK);
+	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_2", 1000, 1000, dirmode), S_OK);
 }
 
 static int check_dir(const char *dirname, struct expected_dir *dirs)
@@ -60,33 +60,33 @@ START_TEST(test_fsroot_readdir)
 	};
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	/* Create directory tree */
 	create_dir_tree(fs);
 
 	retval = fsroot_opendir(fs, "dir", &dh, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (1st time)\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_readdir() returned %d (1st time)\n", retval);
 	ck_assert_msg(check_dir(dirname, expected_dirs),
 		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (2nd time)\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_readdir() returned %d (2nd time)\n", retval);
 	ck_assert_msg(check_dir(dirname, expected_dirs),
 		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (1st time)\n", retval);
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (2nd time)\n", retval);
 
 	/* Check that all the expected directories have been checked */
@@ -96,7 +96,7 @@ START_TEST(test_fsroot_readdir)
 	}
 
 	fsroot_closedir(&dh);
-	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == FSROOT_E_BADARGS);
+	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == E_BADARGS);
 
 	fsroot_deinit(&fs);
 }
@@ -123,40 +123,40 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 	};
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	/* Create directory tree */
 	create_dir_tree(fs);
 
 	retval = fsroot_opendir(fs, "dir", &dh, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (1st time)\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_readdir() returned %d (1st time)\n", retval);
 	ck_assert_msg(check_dir(dirname, expected_dirs),
 		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, 1, &err);
-	ck_assert_msg(retval == FSROOT_E_NOMEM, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == E_NOMEM, "fsroot_readdir() returned %d "
 			"(should return FSROOT_E_NOMEM) (1st time)\n", retval);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d (2nd time)\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_readdir() returned %d (2nd time)\n", retval);
 	ck_assert_msg(check_dir(dirname, expected_dirs),
 		"Directory '%s' returned but not found\n", dirname);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (1st time)\n", retval);
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (2nd time)\n", retval);
 	retval = fsroot_readdir(dh, dirname, 2, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (3rd time)\n", retval);
 
 	/* Check that all the expected directories have been checked */
@@ -166,7 +166,7 @@ START_TEST(test_fsroot_readdir_too_short_buf)
 	}
 
 	fsroot_closedir(&dh);
-	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == FSROOT_E_BADARGS);
+	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == E_BADARGS);
 
 	fsroot_deinit(&fs);
 }
@@ -181,27 +181,27 @@ START_TEST(test_fsroot_readdir_empty)
 	size_t dirlen = sizeof(dirname);
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	/* This time we only create one single empty directory */
-	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, 0040700), FSROOT_OK);
+	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, 0040700), S_OK);
 
 	retval = fsroot_opendir(fs, "dir", &dh, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (1st time)\n", retval);
 	retval = fsroot_readdir(dh, dirname, 3, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE) (2nd time)\n", retval);
 
 	fsroot_closedir(&dh);
-	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == FSROOT_E_BADARGS);
+	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == E_BADARGS);
 
 	fsroot_deinit(&fs);
 }
@@ -216,33 +216,33 @@ START_TEST(test_fsroot_readdir_external_dir)
 	size_t dirlen = sizeof(dirname);
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n", dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
-	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, 0040700), FSROOT_OK);
+	ck_assert_int_eq(fsroot_mkdir(fs, "dir", 1000, 1000, 0040700), S_OK);
 
 	/* We create one "internal" directory, and an external one */
-	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_1", 1000, 1000, 0040700), FSROOT_OK);
+	ck_assert_int_eq(fsroot_mkdir(fs, "dir/dir_1", 1000, 1000, 0040700), S_OK);
 	ck_assert(snprintf(dirname, sizeof(dirname), "%s/dir/dir_2", dir) > 0);
 	ck_assert_int_eq(mkdir(dirname, 0040600), 0);
 
 	/* Now, fsroot_readdir() should only list the internal directory */
 	retval = fsroot_opendir(fs, "dir", &dh, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_opendir(\"dir\") returned %d\n", retval);
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_readdir() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_readdir() returned %d\n", retval);
 	ck_assert_str_eq(dirname, "dir_1");
 
 	retval = fsroot_readdir(dh, dirname, dirlen, &err);
-	ck_assert_msg(retval == FSROOT_NOMORE, "fsroot_readdir() returned %d "
+	ck_assert_msg(retval == S_NOMORE, "fsroot_readdir() returned %d "
 			"(should return FSROOT_NOMORE)\n", retval);
 
 	fsroot_closedir(&dh);
-	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == FSROOT_E_BADARGS);
+	ck_assert(fsroot_readdir(dh, dirname, dirlen, &err) == E_BADARGS);
 
 	fsroot_deinit(&fs);
 }

@@ -79,31 +79,31 @@ static void *dm_fuse_init(struct fuse_conn_info *conn)
 
 	log_i(logger, "DroneFS device monitor. Written by Ander Juaristi.\n");
 
-	if (fsroot_init(&fsroot, logger) != FSROOT_OK) {
+	if (fsroot_init(&fsroot, logger) != S_OK) {
 		fprintf(stderr, "ERROR: Could not initialize fsroot\n");
 		goto error;
 	}
 
-	if (fsroot_set_root_directory(fsroot, root_path) != FSROOT_OK) {
+	if (fsroot_set_root_directory(fsroot, root_path) != S_OK) {
 		fprintf(stderr, "ERROR: Could not set root directory\n");
 		goto error;
 	}
 
 	if (!config_file) {
 		fprintf(stderr, "WARNING: Config file not set\n");
-	} else if (fsroot_set_config_file(fsroot, config_file) != FSROOT_OK) {
+	} else if (fsroot_set_config_file(fsroot, config_file) != S_OK) {
 		fprintf(stderr, "ERROR: Could not set config file\n");
 		goto error;
 	}
 
 	if (!database_file) {
 		fprintf(stderr, "WARNING: Database file not set\n");
-	} else if (fsroot_set_database_file(fsroot, database_file) != FSROOT_OK) {
+	} else if (fsroot_set_database_file(fsroot, database_file) != S_OK) {
 		fprintf(stderr, "ERROR: Could not set database file\n");
 		goto error;
 	}
 
-	if (fsroot_start(fsroot, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754) != FSROOT_OK) {
+	if (fsroot_start(fsroot, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754) != S_OK) {
 		fprintf(stderr, "ERROR: Could not start fsroot\n");
 		goto error;
 	}
@@ -128,7 +128,7 @@ static void dm_fuse_destroy(void *v)
 
 	if (!database_file)
 		goto end;
-	if ((retval = fsroot_persist(ctx->fs, database_file)) != FSROOT_OK) {
+	if ((retval = fsroot_persist(ctx->fs, database_file)) != S_OK) {
 		fprintf(stderr, "ERROR: Could not store FSRoot state at file '%s'"
 			"Error code: %d", database_file, retval);
 	}
@@ -154,16 +154,16 @@ static int dm_fuse_getattr(const char *path, struct stat *st)
 	fs = ctx->fs;
 
 	switch (fsroot_getattr(fs, path, st)) {
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		return -ENOENT;
 		break;
-	case FSROOT_E_SYSCALL:
+	case E_SYSCALL:
 		retval = -errno;
 		break;
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
 	}
@@ -205,13 +205,13 @@ static int dm_fuse_mknod(const char *path, mode_t mode, dev_t dev)
 	}
 
 	switch (retval) {
-	case FSROOT_E_SYSCALL:
+	case E_SYSCALL:
 		retval = -err;
 		break;
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_EXISTS:
+	case E_EXISTS:
 		retval = -ENOENT;
 		break;
 	default:
@@ -248,21 +248,21 @@ static int dm_fuse_symlink(const char *path, const char *link)
 	retval = fsroot_symlink(fs, link, path, fctx->uid, fctx->gid, 0120600);
 
 	switch (retval) {
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
-	case FSROOT_E_SYSCALL:
+	case E_SYSCALL:
 		/*
 		 * FIXME TODO this should account for the specific case
 		 * where 'link' already exists.
 		 */
 		retval = -EACCES;
 		break;
-	case FSROOT_E_BADARGS:
-	case FSROOT_E_NOMEM:
+	case E_BADARGS:
+	case E_NOMEM:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_EXISTS:
+	case E_EXISTS:
 		retval = -EEXIST;
 		break;
 	}
@@ -287,7 +287,7 @@ static int dm_fuse_readlink(const char *path, char *buf, size_t buflen)
 	buflen_required = buflen;
 	retval = fsroot_readlink(fs, path, buf, &buflen_required);
 
-	if (retval == FSROOT_E_NOMEM) {
+	if (retval == E_NOMEM) {
 		/* buflen_required now contains the minimum amount */
 		char *tmpbuf = malloc(buflen_required);
 		if (!tmpbuf)
@@ -296,16 +296,16 @@ static int dm_fuse_readlink(const char *path, char *buf, size_t buflen)
 		retval = fsroot_readlink(fs, path, tmpbuf, &buflen_required);
 	}
 
-	if (retval == FSROOT_OK) {
+	if (retval == S_OK) {
 		if (tmpbuf && buflen_required > 0) {
 			/* Truncate the link target to the specified length */
 			memcpy(buf, tmpbuf, buflen);
 		}
 
 		retval = 0;
-	} else if (retval == FSROOT_E_BADARGS || retval == FSROOT_E_SYSCALL) {
+	} else if (retval == E_BADARGS || retval == E_SYSCALL) {
 		retval = -EFAULT;
-	} else if (retval == FSROOT_E_NOTEXISTS) {
+	} else if (retval == E_NOTEXISTS) {
 		retval = -ENOENT;
 	}
 
@@ -341,14 +341,14 @@ static int dm_fuse_mkdir(const char *path, mode_t mode)
 	retval = fsroot_mkdir(fs, path, fctx->uid, fctx->gid, 0040000 | mode);
 
 	switch (retval) {
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
-	case FSROOT_E_BADARGS:
-	case FSROOT_E_SYSCALL:
+	case E_BADARGS:
+	case E_SYSCALL:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_EXISTS:
+	case E_EXISTS:
 		retval = -EEXIST;
 		break;
 	}
@@ -382,14 +382,14 @@ static int dm_fuse_rmdir(const char *path)
 	fs = ctx->fs;
 
 	switch (fsroot_rmdir(fs, path)) {
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
-	case FSROOT_E_BADARGS:
-	case FSROOT_E_SYSCALL:
+	case E_BADARGS:
+	case E_SYSCALL:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		retval = -ENOENT;
 		break;
 	}
@@ -422,17 +422,17 @@ static int dm_fuse_rename(const char *path, const char *newpath)
 	retval = fsroot_rename(fs, path, newpath);
 
 	switch (retval) {
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		retval = -ENOENT;
 		break;
-	case FSROOT_E_EXISTS:
+	case E_EXISTS:
 		retval = -EEXIST;
 		break;
-	case FSROOT_E_BADARGS:
-	case FSROOT_E_SYSCALL:
+	case E_BADARGS:
+	case E_SYSCALL:
 		retval = -EFAULT;
 		break;
 	}
@@ -459,13 +459,13 @@ static int dm_fuse_chmod(const char *path, mode_t mode)
 	retval = fsroot_chmod(fs, path, mode);
 
 	switch (retval) {
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		retval = -ENOENT;
 		break;
 	}
@@ -490,13 +490,13 @@ static int dm_fuse_chown(const char *path, uid_t uid, gid_t gid)
 	fs = ctx->fs;
 
 	switch (fsroot_chown(fs, path, uid, gid)) {
-	case FSROOT_OK:
+	case S_OK:
 		retval = 0;
 		break;
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		retval = -ENOENT;
 		break;
 	}
@@ -544,10 +544,10 @@ static int dm_fuse_open(const char *path, struct fuse_file_info *fi)
 
 	/* Handle the error condition */
 	switch (retval) {
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		retval = -ENOENT;
 		break;
 	}
@@ -599,10 +599,10 @@ static int dm_fuse_read(const char *path,
 	retval = fsroot_read(fs, fi->fh, buf, size, offset, &err);
 
 	switch (retval) {
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EINVAL;
 		break;
-	case FSROOT_E_SYSCALL:
+	case E_SYSCALL:
 		retval = -err;
 		break;
 	}
@@ -632,10 +632,10 @@ static int dm_fuse_write(const char *path,
 	retval = fsroot_write(fs, fi->fh, buf, size, offset, &err);
 
 	switch (retval) {
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EINVAL;
 		break;
-	case FSROOT_E_SYSCALL:
+	case E_SYSCALL:
 		retval = -err;
 		break;
 	}
@@ -666,16 +666,16 @@ static int dm_fuse_opendir(const char *path, struct fuse_file_info *fi)
 	fs = ctx->fs;
 
 	switch (fsroot_opendir(fs, path, &dir_handle, &err)) {
-	case FSROOT_E_BADARGS:
+	case E_BADARGS:
 		retval = -EFAULT;
 		break;
-	case FSROOT_E_SYSCALL:
+	case E_SYSCALL:
 		retval = -err;
 		break;
-	case FSROOT_E_NOTEXISTS:
+	case E_NOTEXISTS:
 		retval = -ENOENT;
 		break;
-	case FSROOT_OK:
+	case S_OK:
 		/*
 		 * opendir() was successful, so we store the handle
 		 * for future calls to readdir(), closedir(), etc.
@@ -715,19 +715,19 @@ static int dm_fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		/* Iterate until there are no more entries */
 		retval = fsroot_readdir(dir_handle, dir_path, sizeof(dir_path), &err);
 		if (retval < 0) {
-			if (retval == FSROOT_E_SYSCALL)
+			if (retval == E_SYSCALL)
 				retval = -err;
 			goto end;
 		}
 
-		if (retval != FSROOT_NOMORE) {
+		if (retval != S_NOMORE) {
 			/* We've got an entry. Pass it over to FUSE. */
 			if (filler(buf, dir_path, NULL, 0) != 0) {
 				retval = -ENOMEM;
 				goto end;
 			}
 		}
-	} while (retval != FSROOT_NOMORE);
+	} while (retval != S_NOMORE);
 
 	/* Everything went fine */
 	retval = 0;

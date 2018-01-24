@@ -11,7 +11,8 @@
 #include <sqlite3.h>
 #include "mm.h"
 #include "fsroot-db.h"
-#include "fsroot-return-codes.h"
+
+#include "return-codes.h"
 
 /**
  * \file
@@ -92,7 +93,7 @@ static int create_file_excl(const char *fname)
 	int fd;
 
 	if ((fd = open(fname, O_CREAT|O_EXCL, 0600)) == -1)
-		return (errno == EEXIST ? FSROOT_E_EXISTS : FSROOT_E_SYSCALL);
+		return (errno == EEXIST ? E_EXISTS : E_SYSCALL);
 
 	close(fd);
 	return 0;
@@ -113,27 +114,27 @@ static int create_file_excl(const char *fname)
  */
 int fsroot_db_create(const char *fname)
 {
-	int retval = FSROOT_OK;
+	int retval = S_OK;
 	sqlite3 *sqlite;
 
 	if (!fname || !*fname)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	if ((retval = create_file_excl(fname)) != 0)
 		return retval;
 
 	if (sqlite3_open(fname, &sqlite) != SQLITE_OK) {
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		goto end;
 	}
 
 	if (create_schema(sqlite) != 0) {
-		retval = FSROOT_E_UNKNOWN;
+		retval = E_UNKNOWN;
 		goto end;
 	}
 
 end:
-	if (retval != FSROOT_OK)
+	if (retval != S_OK)
 		unlink(fname);
 	sqlite3_close(sqlite);
 	return retval;
@@ -156,11 +157,11 @@ end:
  */
 int fsroot_db_open(const char *fname, fsroot_db_t **db)
 {
-	int retval = FSROOT_E_UNKNOWN;
+	int retval = E_UNKNOWN;
 	struct fsroot_db_st *m_db = NULL;
 
 	if (!fname || !*fname || !db)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	/* Initialize handle to NULL */
 	*db = NULL;
@@ -175,9 +176,9 @@ int fsroot_db_open(const char *fname, fsroot_db_t **db)
 	retval = sqlite3_open_v2(fname, &m_db->sqlite, SQLITE_OPEN_READWRITE, NULL);
 	if (retval != SQLITE_OK || access(fname, W_OK) == -1) {
 		if (retval != SQLITE_OK)
-			retval = (retval == SQLITE_CANTOPEN ? FSROOT_E_NOTEXISTS : FSROOT_E_SYSCALL);
+			retval = (retval == SQLITE_CANTOPEN ? E_NOTEXISTS : E_SYSCALL);
 		else
-			retval = FSROOT_E_NOTEXISTS;
+			retval = E_NOTEXISTS;
 		goto close_and_error;
 	}
 
@@ -190,7 +191,7 @@ int fsroot_db_open(const char *fname, fsroot_db_t **db)
 		NULL,
 		NULL,
 		NULL) == SQLITE_ERROR) {
-		retval = FSROOT_E_NOTINITIALIZED;
+		retval = E_NOTINITIALIZED;
 		goto close_and_error;
 	}
 	if (sqlite3_table_column_metadata(m_db->sqlite,
@@ -201,13 +202,13 @@ int fsroot_db_open(const char *fname, fsroot_db_t **db)
 		NULL,
 		NULL,
 		NULL) == SQLITE_ERROR) {
-		retval = FSROOT_E_NOTINITIALIZED;
+		retval = E_NOTINITIALIZED;
 		goto close_and_error;
 	}
 
 	/* Return handle to caller */
 	*db = m_db;
-	return FSROOT_OK;
+	return S_OK;
 
 close_and_error:
 	sqlite3_close(m_db->sqlite);
@@ -227,7 +228,7 @@ static int fsroot_db_prepare_statement(const char *sql, int sql_len, sqlite3 *db
 	if (retval != SQLITE_OK)
 		sqlite3_finalize(*stmt);
 	else if (!*stmt)
-		return FSROOT_E_UNKNOWN;
+		return E_UNKNOWN;
 
 	return retval;
 }
@@ -293,7 +294,7 @@ int fsroot_db_add_file_entry(fsroot_db_t *db, const char *fname, struct fsroot_f
 	int retval, file_was_updated = 0;
 
 	if (!db || !db->sqlite || !fname || !*fname || !file)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	retval = fsroot_db_insert_file(db, fname, file);
 	if (retval == SQLITE_CONSTRAINT) {
@@ -306,9 +307,9 @@ int fsroot_db_add_file_entry(fsroot_db_t *db, const char *fname, struct fsroot_f
 	}
 
 	if (retval != SQLITE_DONE)
-		return FSROOT_E_UNKNOWN;
+		return E_UNKNOWN;
 
-	return file_was_updated ? FSROOT_OK_EXISTS : FSROOT_OK;
+	return file_was_updated ? S_EXISTS : S_OK;
 
 }
 
@@ -319,7 +320,7 @@ int fsroot_db_iter_init(fsroot_db_iter_t **it, fsroot_db_t *db)
 	char sql[] = "SELECT * FROM fsroot_files";
 
 	if (!db || !it || !db->sqlite)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	retval = fsroot_db_prepare_statement(sql, sizeof(sql), db->sqlite, &stmt);
 	if (retval != SQLITE_OK) {
@@ -330,7 +331,7 @@ int fsroot_db_iter_init(fsroot_db_iter_t **it, fsroot_db_t *db)
 	*it = mm_new0(fsroot_db_iter_t);
 	(*it)->sqlite_stmt = stmt;
 
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /**
@@ -344,11 +345,11 @@ int fsroot_db_iter_init(fsroot_db_iter_t **it, fsroot_db_t *db)
  */
 int fsroot_db_iter_next(fsroot_db_iter_t *it, char **fname, struct fsroot_file *f)
 {
-	int retval = FSROOT_E_UNKNOWN;
+	int retval = E_UNKNOWN;
 	const char *sqlite_filename;
 
 	if (!it)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	switch (sqlite3_step(it->sqlite_stmt)) {
 	case SQLITE_ROW:
@@ -356,7 +357,7 @@ int fsroot_db_iter_next(fsroot_db_iter_t *it, char **fname, struct fsroot_file *
 		if (fname) {
 			sqlite_filename = (const char *) sqlite3_column_text(it->sqlite_stmt, 0);
 			if (!sqlite_filename)
-				return FSROOT_E_SYSCALL; /* this should not happen */
+				return E_SYSCALL; /* this should not happen */
 			*fname = strdup(sqlite_filename);
 		}
 		if (f) {
@@ -364,17 +365,17 @@ int fsroot_db_iter_next(fsroot_db_iter_t *it, char **fname, struct fsroot_file *
 			f->uid = sqlite3_column_int(it->sqlite_stmt, 2);
 			f->gid = sqlite3_column_int(it->sqlite_stmt, 3);
 		}
-		retval = FSROOT_OK;
+		retval = S_OK;
 		break;
 	case SQLITE_DONE:
 		/* There are no more rows */
-		retval = FSROOT_NOMORE;
+		retval = S_NOMORE;
 		break;
 	case SQLITE_BUSY:
-		retval = FSROOT_E_AGAIN;
+		retval = E_AGAIN;
 		break;
 	default:
-		retval = FSROOT_E_SYSCALL;
+		retval = E_SYSCALL;
 		break;
 	}
 
@@ -409,16 +410,16 @@ void fsroot_db_iter_deinit(fsroot_db_iter_t **it)
 int fsroot_db_close(fsroot_db_t **db)
 {
 	if (!db || !*db || !(*db)->sqlite)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	int retval = sqlite3_close((*db)->sqlite);
 	if (retval == SQLITE_BUSY)
-		return FSROOT_E_BUSY;
+		return E_BUSY;
 	else if (retval != SQLITE_OK)
-		return FSROOT_E_UNKNOWN;
+		return E_UNKNOWN;
 
 	mm_free(*db);
-	return FSROOT_OK;
+	return S_OK;
 }
 
 /** @} */

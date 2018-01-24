@@ -9,8 +9,8 @@
 #include <linux/limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include "fsroot-return-codes.h"
 #include "log.h"
+#include "return-codes.h"
 
 struct _fsroot_st;
 typedef struct _fsroot_st fsroot_t;

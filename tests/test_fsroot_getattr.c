@@ -15,23 +15,23 @@ START_TEST(test_fsroot_getattr)
 	struct stat st;
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	retval = fsroot_create(fs, "foo", 1000, 1000, 0100700, 0, &error);
 	ck_assert_msg(retval >= 0 && error == 0, "fsroot_create(\"foo\") returned %d (error: %d)\n",
 			retval, error);
 	retval = fsroot_getattr(fs, "foo", &st);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_getattr(\"foo\") returned %d\n", retval);
 	ck_assert_int_eq(st.st_uid, 1000);
 	ck_assert_int_eq(st.st_gid, 1000);
 	ck_assert_int_eq(st.st_mode, 0100700);
 	retval = fsroot_release(fs, "foo");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"foo\") returned %d\n", retval);
 
 	fsroot_deinit(&fs);
 }
@@ -44,23 +44,23 @@ START_TEST(test_fsroot_getattr_with_trailing_slash)
 	struct stat st;
 
 	retval = fsroot_init(&fs, NULL);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_init(\"%s\") returned %d\n",
+	ck_assert_msg(retval == S_OK, "fsroot_init(\"%s\") returned %d\n",
 			dir, retval);
 
 	fsroot_set_root_directory(fs, dir);
 	retval = fsroot_start(fs, 1000, 1000, 0040754);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_start() returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_start() returned %d\n", retval);
 
 	retval = fsroot_create(fs, "/foo", 1000, 1000, 0100700, 0, &error);
 	ck_assert_msg(retval >= 0 && error == 0, "fsroot_create(\"foo\") returned %d (error: %d)\n",
 			retval, error);
 	retval = fsroot_getattr(fs, "/foo", &st);
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_getattr(\"/foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_getattr(\"/foo\") returned %d\n", retval);
 	ck_assert_int_eq(st.st_uid, 1000);
 	ck_assert_int_eq(st.st_gid, 1000);
 	ck_assert_int_eq(st.st_mode, 0100700);
 	retval = fsroot_release(fs, "/foo");
-	ck_assert_msg(retval == FSROOT_OK, "fsroot_release(\"/foo\") returned %d\n", retval);
+	ck_assert_msg(retval == S_OK, "fsroot_release(\"/foo\") returned %d\n", retval);
 
 	fsroot_deinit(&fs);
 }

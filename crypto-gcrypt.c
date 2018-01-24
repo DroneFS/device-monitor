@@ -7,7 +7,7 @@
 #include <gcrypt.h>
 #include "mm.h"
 #include "crypto-internal.h"
-#include "fsroot-return-codes.h"
+#include "return-codes.h"
 
 int encrypt_internal(const uint8_t *in, size_t in_len,
 		uint8_t **out, size_t *out_len,
@@ -47,12 +47,12 @@ int encrypt_internal(const uint8_t *in, size_t in_len,
 		goto syscall_error;
 
 	gcry_cipher_close(ctx);
-	return FSROOT_OK;
+	return S_OK;
 
 syscall_error:
 	gcry_cipher_close(ctx);
 	mm_free(*out);
-	return FSROOT_E_SYSCALL;
+	return E_SYSCALL;
 }
 
 int decrypt_internal(const uint8_t *in, size_t in_len,
@@ -99,10 +99,10 @@ int decrypt_internal(const uint8_t *in, size_t in_len,
 	*out_len -= pad_len;
 
 	gcry_cipher_close(ctx);
-	return FSROOT_OK;
+	return S_OK;
 
 syscall_error:
 	gcry_cipher_close(ctx);
 	mm_free(*out);
-	return FSROOT_E_SYSCALL;
+	return E_SYSCALL;
 }
