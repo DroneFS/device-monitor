@@ -9,26 +9,12 @@ fuse_main_SOURCES = fuse-main.c
 fuse_main_CFLAGS = $(FUSE_CFLAGS) $(CFLAGS)
 fuse_main_LDFLAGS = $(FUSE_LIBS)
 fuse_main_LDADD = libfsroot.la
-# fuse_main_LDADD = libfsroot
-# fuse_main_LDFLAGS = $(pkg-config --cflags --libs fuse)
 
-lib_LTLIBRARIES = libfsroot.la
-libfsroot_la_SOURCES = fsroot.c fsroot.h hash.c hash.h mm.c mm.h list.c list.h fsroot-path.c fsroot-path.h \
-											 fsroot-db.c fsroot-db.h log.c log.h
-libfsroot_la_CFLAGS = $(CFLAGS)
-libfsroot_la_LDFLAGS = -pthread -lsqlite3 -llua5.1
-libfsroot_la_LIBADD = libchall.la
-
-lib_LTLIBRARIES += libchall.la
+lib_LTLIBRARIES = libchall.la
 libchall_la_SOURCES = configuration.c configuration.h config-lua.c config-xml.c crypto-internal.h \
-											crypto.c crypto.h fsroot-return-codes.h list.c list.h mm.c mm.h
+											crypto.c crypto.h return-codes.h list.c list.h mm.c mm.h
 libchall_la_CFLAGS = $(CFLAGS)
 libchall_la_LDFLAGS = -llua5.1
-
-if HAVE_LIBXML
-libfsroot_la_LDFLAGS += -lxml2
-libfsroot_la_CFLAGS += -I/usr/include/libxml2
-endif
 
 if HAVE_GCRYPT
 libchall_la_SOURCES += crypto-gcrypt.c
@@ -38,6 +24,13 @@ if HAVE_OPENSSL
 libchall_la_SOURCES += crypto-openssl.c
 libchall_la_LDFLAGS += -lcrypto
 endif
+
+lib_LTLIBRARIES += libfsroot.la
+libfsroot_la_SOURCES = fsroot.c fsroot.h hash.c hash.h mm.c mm.h list.c list.h fsroot-path.c fsroot-path.h \
+											 fsroot-db.c fsroot-db.h log.c log.h
+libfsroot_la_CFLAGS = $(CFLAGS)
+libfsroot_la_LDFLAGS = -pthread -lsqlite3
+libfsroot_la_LIBADD = libchall.la
 
 lib_LTLIBRARIES += libdch.la
 libdch_la_SOURCES = dummy-challenge.c
