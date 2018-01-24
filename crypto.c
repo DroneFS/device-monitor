@@ -240,7 +240,7 @@ size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *fsc)
  */
 int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
 {
-	int retval;
+	int retval = S_OK;
 	list_head_t h;
 
 	if (!fsc || !c)
