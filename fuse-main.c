@@ -357,16 +357,6 @@ static int dm_fuse_mkdir(const char *path, mode_t mode)
 }
 
 /*
- * Remove a file.
- * TODO fsroot does not support unlink yet!
- */
-static int dm_fuse_unlink(const char *path)
-{
-	/* TODO implement this */
-	return -EFAULT;
-}
-
-/*
  * Remove a directory.
  */
 static int dm_fuse_rmdir(const char *path)
@@ -502,16 +492,6 @@ static int dm_fuse_chown(const char *path, uid_t uid, gid_t gid)
 	}
 
 	return retval;
-}
-
-/*
- * Change the size of a file.
- * This should resemble truncate(2).
- * TODO fsroot does not yet support truncate!
- */
-static int dm_fuse_truncate(const char *path, off_t newsize, struct fuse_file_info *fi)
-{
-	return -EFAULT;
 }
 
 /*
@@ -743,17 +723,6 @@ static int dm_fuse_releasedir(const char *path, struct fuse_file_info *fi)
 
 	fsroot_closedir((void **) &fi->fh);
 	return 0;
-}
-
-/*
- * Check file access permissions.
- * This will be called for access(2), unless the 'default_permissions'
- * mount option is given.
- * TODO This function should be removed. We'll be invoking this daemon with 'default_permissions' set.
- */
-static int dm_fuse_access(const char *path, int mask)
-{
-	return -EACCES;
 }
 
 void print_help(const char *program_name)

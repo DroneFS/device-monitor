@@ -1622,45 +1622,6 @@ int fsroot_init(fsroot_t **fs, struct logger *l)
 	return S_OK;
 }
 
-static int check_root_dir_is_empty(fsroot_t *fs)
-{
-	int finish = 0,
-		errno_saved = errno,
-		retval = E_UNKNOWN;
-	struct dirent *de;
-	DIR *dp = opendir(fs->root_path);
-
-	if (!dp) {
-		if (errno == ENOENT)
-			return E_NOTEXISTS;
-		else if (errno == ENOTDIR)
-			return E_NOT_DIRECTORY;
-		else
-			return E_SYSCALL;
-	}
-
-	while (!finish) {
-		de = readdir(dp);
-
-		if (de && strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			finish = 1;
-			retval = E_NOTEMPTY;
-		} else if (!de) {
-			finish = 1;
-			/*
-			 * If errno didn't change it simply means there are no more entries
-			 * in this directory
-			 */
-			retval = (errno_saved == errno ?
-				  S_OK :
-				  E_SYSCALL);
-		}
-	}
-
-	closedir(dp);
-	return retval;
-}
-
 static int load_from_database(fsroot_t *fs, fsroot_db_t *db)
 {
 	int retval = E_UNKNOWN;
