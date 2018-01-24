@@ -1,11 +1,11 @@
 /*
- * fsroot-crypto.h
+ * crypto.h
  *
  *  Created on: 15 Sep 2017
  *      Author: Ander Juaristi
  */
-#ifndef __FSROOT_CRYPTO_H__
-#define __FSROOT_CRYPTO_H__
+#ifndef __CRYPTO_H__
+#define __CRYPTO_H__
 #include <stdint.h>
 
 #include "configuration.h"

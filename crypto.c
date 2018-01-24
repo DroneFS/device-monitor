@@ -1,5 +1,5 @@
 /*
- * fsroot-crypto.c
+ * crypto.c
  *
  *  Created on: 12 Sep 2017
  *      Author: Ander Juaristi
@@ -8,10 +8,10 @@
 #include <string.h>
 #include <limits.h>
 #include <dlfcn.h>
-#include "fsroot-return-codes.h"
-#include "fsroot-crypto.h"
+#include "crypto.h"
 #include "crypto-internal.h"
 #include "mm.h"
+#include "return-codes.h"
 
 static size_t get_random_bytes(uint8_t *dst, size_t len)
 {
@@ -31,12 +31,12 @@ static int load_challenge(fsroot_crypto_t *fsc, const char *libch, unsigned int 
 	void *handle = dlopen(libch, RTLD_NOW);
 
 	if (!handle)
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	/* Library was loaded successfully - copy handle and name in the structure */
 	fsc->challenges[index] = strdup(libch);
 	fsc->handles[index] = handle;
-	return FSROOT_OK;
+	return S_OK;
 }
 
 static void unload_challenge(fsroot_crypto_t *fsc, unsigned int index)
@@ -84,7 +84,7 @@ static int fsroot_run_challenges(fsroot_crypto_t *fsc,
 		if (fsc->challenges[i]) {
 			tmp_key = get_key_from_challenge(fsc->handles[i]);
 			if (!tmp_key)
-				return FSROOT_E_UNKNOWN;
+				return E_UNKNOWN;
 
 			/* key is a 128 bit (16 bytes) value */
 			memxor(key, tmp_key, keylen);
@@ -126,28 +126,28 @@ static void resize_slots(fsroot_crypto_t *fsc)
 int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 {
 	/* 'FSROOT_E_NOMEM' means we reached the maximum number challenges allowed (currently 5) */
-	int retval = FSROOT_E_NOMEM;
+	int retval = E_NOMEM;
 
 	if (!fsc || !libch || !*libch)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 	if (fsc->num_challenges == SIZE_MAX)
-		return FSROOT_E_NOMEM;
+		return E_NOMEM;
 
 	if (fsc->num_slots == fsc->num_challenges) {
 		if ((fsc->num_slots + 1) >= SIZE_MAX)
-			return FSROOT_E_NOMEM;
+			return E_NOMEM;
 		resize_slots(fsc);
 	}
 
 	for (size_t i = 0; i < fsc->num_slots; i++) {
 		if (fsc->challenges[i] && strcmp(fsc->challenges[i], libch) == 0) {
 			/* This challenge is already loaded */
-			retval = FSROOT_OK;
+			retval = S_OK;
 			break;
 		} else if (fsc->challenges[i] == NULL) {
 			/* We load this challenge at the designated index */
 			retval = load_challenge(fsc, libch, i);
-			if (retval == FSROOT_OK)
+			if (retval == S_OK)
 				fsc->num_challenges++;
 			break;
 		}
@@ -158,13 +158,13 @@ int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 
 int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
 {
-	int retval = FSROOT_E_NOTFOUND;
+	int retval = E_NOTFOUND;
 
 	for (size_t i = 0; i < fsc->num_slots; i++) {
 		if (fsc->challenges[i] && strcmp(fsc->challenges[i], libch) == 0) {
 			unload_challenge(fsc, i);
 			fsc->num_challenges--;
-			retval = FSROOT_OK;
+			retval = S_OK;
 			break;
 		}
 	}
@@ -176,24 +176,24 @@ int fsroot_crypto_encrypt_with_challenges(fsroot_crypto_t *fsc,
 	const uint8_t *in, size_t in_len,
 	uint8_t **out, size_t *out_len)
 {
-	int retval = FSROOT_OK;
+	int retval = S_OK;
 	uint8_t iv[AES_BLOCK_LENGTH];
 	uint8_t *ciphertext_out;
 	size_t ciphertext_len;
 
 	if (!in || !in_len ||
 		!out || !out_len)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
 	/* Generate a random IV of the same length as the AES block size */
 	if (get_random_bytes(iv, sizeof(iv)) < sizeof(iv))
-		return FSROOT_E_SYSCALL;
+		return E_SYSCALL;
 
 	retval = fsroot_run_challenges(fsc, in, in_len,
 			&ciphertext_out, &ciphertext_len,
 			iv, sizeof(iv),
 			encrypt_internal);
-	if (retval != FSROOT_OK)
+	if (retval != S_OK)
 		goto end;
 
 	/* Return a blob with the IV + the ciphertext */
@@ -233,39 +233,6 @@ size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *fsc)
 	return (fsc ? fsc->num_challenges : 0);
 }
 
-static int config_load_challenges(fsroot_crypto_t *fsc, config_value_t *it)
-{
-	int retval;
-	char *chall_name;
-	config_value_t *val = NULL;
-
-	while (config_iterator_next(it, &val) == CONFIG_OK) {
-		if (config_get_as_string(val, &chall_name) == CONFIG_OK) {
-			/* Load the challenge */
-			retval = fsroot_crypto_load_challenge(fsc, chall_name);
-			mm_free(chall_name);
-			if (retval != FSROOT_OK)
-				break;
-		}
-	}
-
-	config_destroy_value(&val);
-	return retval;
-}
-
-static int config_load_challenge(fsroot_crypto_t *fsc, config_value_t *val)
-{
-	char *chall_name;
-	int retval = FSROOT_E_UNKNOWN;
-
-	if (config_get_as_string(val, &chall_name) == CONFIG_OK) {
-		retval = fsroot_crypto_load_challenge(fsc, chall_name);
-		mm_free(chall_name);
-	}
-
-	return retval;
-}
-
 /**
  * \param[in] fsc
  * \param[in] c
@@ -274,21 +241,26 @@ static int config_load_challenge(fsroot_crypto_t *fsc, config_value_t *val)
 int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
 {
 	int retval;
-	config_value_t *val = NULL;
+	list_head_t h;
 
 	if (!fsc || !c)
-		return FSROOT_E_BADARGS;
+		return E_BADARGS;
 
-	if (config_get_value(c, &val, "challenges") == CONFIG_OK) {
-		if (config_is_iterator(val))
-			retval = config_load_challenges(fsc, val);
-		else if (config_is_string(val))
-			retval = config_load_challenge(fsc, val);
+	list_init(&h);
 
-		config_destroy_value(&val);
+	if (c->get_challenges_list(c, &h) > 0) {
+		for (struct list_node_st *cur_node = h.first;
+				cur_node;
+				cur_node = cur_node->next) {
+			retval = fsroot_crypto_load_challenge(fsc, cur_node->value);
+			if (retval != S_OK)
+				break;
+		}
 	}
 
-	if (retval == FSROOT_OK) {
+	list_destroy(&h, NULL);
+
+	if (retval == S_OK) {
 		return (fsc->num_challenges >= INT_MAX ?
 				INT_MAX :
 				fsc->num_challenges);
