@@ -27,6 +27,11 @@ AC_ARG_WITH([openssl],
   [AS_HELP_STRING([--with-openssl], [Use OpenSSL instead of libgcrypt])],
   [crypto_lib=openssl],
   [crypto_lib=gcrypt])
+AC_ARG_WITH([libxml2],
+  [AS_HELP_STRING([--with-libxml2], [Use XML config files])],
+  [use_libxml=yes],
+  [use_libxml=no])
+
 #
 # Check for the crypto library (currently either gcrypt or OpenSSL)
 #
@@ -38,6 +43,11 @@ else
   AC_CHECK_LIB([crypto], [EVP_aes_128_cbc],
     [openssl_available=yes],
     [openssl_available=no])
+fi
+if test "$use_libxml" == "yes"; then
+  AC_CHECK_LIB([xml2], [xmlInitParser],
+    [libxml_available=yes],
+    [libxml_available=no])
 fi
 
 if test "$crypto_lib" == "gcrypt"; then
@@ -53,8 +63,20 @@ if test "$crypto_lib" == "openssl"; then
   fi
 fi
 
+if test "$use_libxml" == "yes"; then
+  if test "$libxml_available" == "no"; then
+    echo "ERROR: libxml2 was not found"
+    exit
+  fi
+fi
+
+if test "$use_libxml" == "yes"; then
+  AC_DEFINE([HAVE_LIBXML], 1, [LibXML2 support])
+fi
+
 AM_CONDITIONAL([HAVE_GCRYPT], [test "$crypto_lib" == "gcrypt"])
 AM_CONDITIONAL([HAVE_OPENSSL], [test "$crypto_lib" == "openssl"])
+AM_CONDITIONAL([HAVE_LIBXML], [test "$use_libxml" == "yes"])
 
 #
 # Check for 'check'
@@ -94,6 +116,7 @@ if ! test -d "$prefix"; then
 else
   echo " (OK)"
 fi
+echo "Use LibXML2: $use_libxml"
 echo "Crypto library: $crypto_lib"
 echo "Docs: $DOCS"
 echo "Unit tests: $TESTS"

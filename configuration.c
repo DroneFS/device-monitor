@@ -16,5 +16,8 @@ int config_init(config_t *c, const char *filename)
 
 	p = strrchr(filename, '.');
 
-	return config_init_lua(c, filename);
+	if (!p || strncmp(p, ".lua", 4))
+		return config_init_xml(c, filename);
+	else
+		return config_init_lua(c, filename);
 }
