@@ -1442,7 +1442,8 @@ static void __fsroot_deinit(fsroot_t *fs)
 	pthread_rwlock_destroy(&fs->open_files.rwlock);
 
 	/* Unload configuration */
-	fs->c->deinit(&fs->c);
+	if (fs->c)
+		fs->c->deinit(&fs->c);
 	fs->started = 0;
 }
 
