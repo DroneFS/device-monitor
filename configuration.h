@@ -26,6 +26,5 @@ typedef struct config_st
 
 int config_init(config_t *, const char *);
 int config_init_lua(config_t *, const char *);
-int config_init_xml(config_t *, const char *);
 
 #endif

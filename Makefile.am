@@ -11,7 +11,7 @@ fuse_main_LDFLAGS = $(FUSE_LIBS)
 fuse_main_LDADD = libfsroot.la
 
 lib_LTLIBRARIES = libchall.la
-libchall_la_SOURCES = configuration.c configuration.h config-lua.c config-xml.c crypto-internal.h \
+libchall_la_SOURCES = configuration.c configuration.h config-lua.c crypto-internal.h \
 											crypto.c crypto.h return-codes.h list.c list.h mm.c mm.h
 libchall_la_CFLAGS = $(CFLAGS)
 libchall_la_LDFLAGS = -llua5.1
