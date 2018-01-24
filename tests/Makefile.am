@@ -3,11 +3,11 @@ AM_LDFLAGS = -ldl $(LDFLAGS)
 if HAVE_CHECK
 TESTS = test_fsroot_create test_fsroot_symlink test_fsroot_rename test_fsroot_chmod_chown \
 	test_fsroot_getattr test_fsroot_mkdir test_fsroot_readdir test_fsroot_root_path \
-	test_fsroot_path_basename test_fsroot_path_traversal test_fsroot_persistence
+	test_fsroot_persistence
 
 check_PROGRAMS = test_fsroot_create test_fsroot_symlink test_fsroot_rename test_fsroot_chmod_chown \
 	test_fsroot_getattr test_fsroot_mkdir test_fsroot_readdir test_fsroot_root_path \
-	test_fsroot_path_basename test_fsroot_path_traversal test_fsroot_persistence
+	test_fsroot_persistence
 
 test_fsroot_create_SOURCES = test_fsroot_create.c $(top_builddir)/fsroot.h
 test_fsroot_create_CFLAGS = @CHECK_CFLAGS@
@@ -40,14 +40,6 @@ test_fsroot_readdir_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
 test_fsroot_root_path_SOURCES = test_fsroot_root_path.c $(top_builddir)/fsroot.h
 test_fsroot_root_path_CFLAGS = @CHECK_CFLAGS@
 test_fsroot_root_path_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
-
-test_fsroot_path_basename_SOURCES = test_fsroot_path_basename.c $(top_builddir)/fsroot.h $(top_builddir)/fsroot-path.h
-test_fsroot_path_basename_CFLAGS = @CHECK_CFLAGS@
-test_fsroot_path_basename_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
-
-test_fsroot_path_traversal_SOURCES = test_fsroot_path_traversal.c $(top_builddir)/fsroot.h $(top_builddir)/fsroot-path.h
-test_fsroot_path_traversal_CFLAGS = @CHECK_CFLAGS@
-test_fsroot_path_traversal_LDADD = $(top_builddir)/libfsroot.la @CHECK_LIBS@
 
 test_fsroot_persistence_SOURCES = test_fsroot_persistence.c $(top_builddir)/fsroot.h
 test_fsroot_persistence_CFLAGS = @CHECK_CFLAGS@

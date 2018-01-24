@@ -26,7 +26,7 @@ libchall_la_LDFLAGS += -lcrypto
 endif
 
 lib_LTLIBRARIES += libfsroot.la
-libfsroot_la_SOURCES = fsroot.c fsroot.h hash.c hash.h mm.c mm.h list.c list.h fsroot-path.c fsroot-path.h \
+libfsroot_la_SOURCES = fsroot.c fsroot.h hash.c hash.h mm.c mm.h list.c list.h \
 											 fsroot-db.c fsroot-db.h log.c log.h
 libfsroot_la_CFLAGS = $(CFLAGS)
 libfsroot_la_LDFLAGS = -pthread -lsqlite3
