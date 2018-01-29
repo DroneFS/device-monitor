@@ -76,6 +76,7 @@ static void *dm_fuse_init(struct fuse_conn_info *conn)
 	log_init(&logger);
 	log_set_stream(logger, LOG_INFO, stderr);
 	log_set_stream(logger, LOG_DEBUG, stderr);
+	log_set_stream(logger, LOG_ERROR, stderr);
 
 	log_i(logger, "DroneFS device monitor. Written by Ander Juaristi.\n");
 

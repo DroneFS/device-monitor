@@ -30,18 +30,23 @@ static int load_challenge(fsroot_crypto_t *fsc, const char *libch, unsigned int 
 {
 	void *handle = dlopen(libch, RTLD_NOW);
 
-	if (!handle)
+	if (!handle) {
+		log_e(fsc->logger, "Could not load challenge '%s'\n", libch);
 		return E_SYSCALL;
+	}
 
 	/* Library was loaded successfully - copy handle and name in the structure */
 	fsc->challenges[index] = strdup(libch);
 	fsc->handles[index] = handle;
+	log_i(fsc->logger, "Challenge loaded: %s\n", libch);
 	return S_OK;
 }
 
 static void unload_challenge(fsroot_crypto_t *fsc, unsigned int index)
 {
 	/* Unload the challenge at the designated index */
+	log_i(fsc->logger, "Unloading challenge: %s\n", fsc->challenges[index]);
+
 	mm_free(fsc->challenges[index]);
 	dlclose(fsc->handles[index]);
 
@@ -83,12 +88,17 @@ static int fsroot_run_challenges(fsroot_crypto_t *fsc,
 	for (size_t i = 0; i < fsc->num_challenges; i++) {
 		if (fsc->challenges[i]) {
 			tmp_key = get_key_from_challenge(fsc->handles[i]);
-			if (!tmp_key)
+			if (!tmp_key) {
+				log_e(fsc->logger, "Could not get key from challenge %s\n",
+						fsc->challenges[i]);
 				return E_UNKNOWN;
+			}
 
 			/* key is a 128 bit (16 bytes) value */
 			memxor(key, tmp_key, keylen);
 			mm_free(tmp_key);
+
+			log_i(fsc->logger, "Got key from challenge %s\n", fsc->challenges[i]);
 		}
 	}
 
@@ -103,6 +113,7 @@ void fsroot_crypto_init(fsroot_crypto_t *fsc)
 	fsc->num_slots = INITIAL_SLOTS;
 	fsc->challenges = mm_new(INITIAL_SLOTS, char *);
 	fsc->handles = mm_new(INITIAL_SLOTS, void *);
+	fsc->logger = NULL;
 }
 
 void fsroot_crypto_deinit(fsroot_crypto_t *fsc)
@@ -113,6 +124,14 @@ void fsroot_crypto_deinit(fsroot_crypto_t *fsc)
 	fsc->num_slots = 0;
 	mm_free(fsc->challenges);
 	mm_free(fsc->handles);
+
+	log_i(fsc->logger, "crypto: Deinitialized engine\n");
+}
+
+void fsroot_crypto_set_logger(fsroot_crypto_t *fsc, struct logger *logger)
+{
+	if (fsc)
+		fsc->logger = logger;
 }
 
 static void resize_slots(fsroot_crypto_t *fsc)

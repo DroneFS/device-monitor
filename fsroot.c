@@ -1618,6 +1618,7 @@ int fsroot_init(fsroot_t **fs, struct logger *l)
 	pthread_rwlock_init(&fsroot->open_files.rwlock, NULL);
 
 	fsroot_crypto_init(&fs_crypto);
+	fsroot_crypto_set_logger(&fs_crypto, l);
 
 	return S_OK;
 }

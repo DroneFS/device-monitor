@@ -8,6 +8,7 @@
 #ifndef CRYPTO_INTERNAL_H_
 #define CRYPTO_INTERNAL_H_
 #include <stdint.h>
+#include "crypto-private.h"
 
 #define AES_KEY_LENGTH 16
 #define AES_BLOCK_LENGTH 16

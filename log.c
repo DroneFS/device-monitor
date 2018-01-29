@@ -47,6 +47,10 @@ static void vlog(struct logger *l,
 		stream = l->i;
 		prefix = "[INFO] ";
 		break;
+	case LOG_ERROR:
+		stream = l->e;
+		prefix = "[ERROR] ";
+		break;
 	case LOG_DEBUG:
 		stream = l->d;
 		prefix = "[DEBUG] ";
@@ -66,6 +70,17 @@ void log_i(struct logger *l, const char *fmt, ...)
 	if (l && fmt) {
 		va_start(args, fmt);
 		vlog(l, LOG_INFO, fmt, args);
+		va_end(args);
+	}
+}
+
+void log_e(struct logger *l, const char *fmt, ...)
+{
+	va_list args;
+
+	if (l && fmt) {
+		va_start(args, fmt);
+		vlog(l, LOG_ERROR, fmt, args);
 		va_end(args);
 	}
 }

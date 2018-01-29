@@ -7,20 +7,17 @@
 #ifndef __CRYPTO_H__
 #define __CRYPTO_H__
 #include <stdint.h>
+#include "log.h"
 
 #include "configuration.h"
 
-struct fsroot_crypto_st
-{
-	size_t num_challenges;
-	size_t num_slots;
-	char **challenges;
-	void **handles;
-};
+#include "crypto-private.h"
 typedef struct fsroot_crypto_st fsroot_crypto_t;
 
 void fsroot_crypto_init(fsroot_crypto_t *);
 void fsroot_crypto_deinit(fsroot_crypto_t *);
+
+void fsroot_crypto_set_logger(fsroot_crypto_t *, struct logger *);
 
 int fsroot_crypto_load_challenge(fsroot_crypto_t *, const char *);
 int fsroot_crypto_unload_challenge(fsroot_crypto_t *, const char *);
