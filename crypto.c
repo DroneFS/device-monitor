@@ -109,6 +109,7 @@ static int fsroot_run_challenges(fsroot_crypto_t *fsc,
 
 void fsroot_crypto_init(fsroot_crypto_t *fsc)
 {
+	pthread_rwlock_init(&fsc->rwlock, NULL);
 	fsc->num_challenges = 0;
 	fsc->num_slots = INITIAL_SLOTS;
 	fsc->challenges = mm_new(INITIAL_SLOTS, char *);
@@ -125,6 +126,7 @@ void fsroot_crypto_deinit(fsroot_crypto_t *fsc)
 	mm_free(fsc->challenges);
 	mm_free(fsc->handles);
 
+	pthread_rwlock_destroy(&fsc->rwlock);
 	log_i(fsc->logger, "crypto: Deinitialized engine\n");
 }
 
@@ -149,12 +151,19 @@ int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 
 	if (!fsc || !libch || !*libch)
 		return E_BADARGS;
-	if (fsc->num_challenges == SIZE_MAX)
+
+	pthread_rwlock_wrlock(&fsc->rwlock);
+
+	if (fsc->num_challenges == SIZE_MAX) {
+		pthread_rwlock_unlock(&fsc->rwlock);
 		return E_NOMEM;
+	}
 
 	if (fsc->num_slots == fsc->num_challenges) {
-		if ((fsc->num_slots + 1) >= SIZE_MAX)
+		if ((fsc->num_slots + 1) >= SIZE_MAX) {
+			pthread_rwlock_unlock(&fsc->rwlock);
 			return E_NOMEM;
+		}
 		resize_slots(fsc);
 	}
 
@@ -172,12 +181,16 @@ int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 		}
 	}
 
+	pthread_rwlock_unlock(&fsc->rwlock);
+
 	return retval;
 }
 
 int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
 {
 	int retval = E_NOTFOUND;
+
+	pthread_rwlock_wrlock(&fsc->rwlock);
 
 	for (size_t i = 0; i < fsc->num_slots; i++) {
 		if (fsc->challenges[i] && strcmp(fsc->challenges[i], libch) == 0) {
@@ -188,6 +201,7 @@ int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
 		}
 	}
 
+	pthread_rwlock_unlock(&fsc->rwlock);
 	return retval;
 }
 
@@ -208,10 +222,12 @@ int fsroot_crypto_encrypt_with_challenges(fsroot_crypto_t *fsc,
 	if (get_random_bytes(iv, sizeof(iv)) < sizeof(iv))
 		return E_SYSCALL;
 
+	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
 			&ciphertext_out, &ciphertext_len,
 			iv, sizeof(iv),
 			encrypt_internal);
+	pthread_rwlock_unlock(&fsc->rwlock);
 	if (retval != S_OK)
 		goto end;
 
@@ -230,6 +246,7 @@ int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *fsc,
 		const uint8_t *in, size_t in_len,
 		uint8_t **out, size_t *out_len)
 {
+	int retval;
 	/* IV comes first */
 	const uint8_t *iv = in;
 	size_t ivlen = AES_BLOCK_LENGTH;
@@ -237,10 +254,15 @@ int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *fsc,
 	/* Ciphertext comes right after IV */
 	in += ivlen;
 	in_len -= ivlen;
-	return fsroot_run_challenges(fsc, in, in_len,
+
+	pthread_rwlock_rdlock(&fsc->rwlock);
+	retval = fsroot_run_challenges(fsc, in, in_len,
 			out, out_len,
 			iv, ivlen,
 			decrypt_internal);
+	pthread_rwlock_unlock(&fsc->rwlock);
+
+	return retval;
 }
 
 /**
@@ -249,7 +271,13 @@ int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *fsc,
  */
 size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *fsc)
 {
-	return (fsc ? fsc->num_challenges : 0);
+	int retval;
+
+	pthread_rwlock_rdlock(&fsc->rwlock);
+	retval = (fsc ? fsc->num_challenges : 0);
+	pthread_rwlock_unlock(&fsc->rwlock);
+
+	return retval;
 }
 
 /**
@@ -280,12 +308,15 @@ int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
 	list_destroy(&h, NULL);
 
 	if (retval == S_OK) {
-		return (fsc->num_challenges >= INT_MAX ?
+		pthread_rwlock_rdlock(&fsc->rwlock);
+		retval = (fsc->num_challenges >= INT_MAX ?
 				INT_MAX :
 				fsc->num_challenges);
-	} else {
-		return retval;
+		pthread_rwlock_unlock(&fsc->rwlock);
+
 	}
+
+	return retval;
 }
 
 /**
@@ -293,9 +324,11 @@ int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
  */
 void fsroot_crypto_unload_all_challenges(fsroot_crypto_t *fsc)
 {
+	pthread_rwlock_wrlock(&fsc->rwlock);
 	if (fsc->num_challenges > 0) {
 		for (size_t i = 0; i < fsc->num_challenges; i++)
 			unload_challenge(fsc, i);
 		fsc->num_challenges = 0;
 	}
+	pthread_rwlock_unlock(&fsc->rwlock);
 }

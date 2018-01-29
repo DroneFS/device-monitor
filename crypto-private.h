@@ -7,9 +7,11 @@
 
 #ifndef CRYPTO_PRIVATE_H_
 #define CRYPTO_PRIVATE_H_
+#include <pthread.h>
 
 struct fsroot_crypto_st
 {
+	pthread_rwlock_t rwlock;
 	size_t num_challenges;
 	size_t num_slots;
 	char **challenges;
