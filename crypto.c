@@ -222,14 +222,18 @@ int fsroot_crypto_encrypt_with_challenges(fsroot_crypto_t *fsc,
 	if (get_random_bytes(iv, sizeof(iv)) < sizeof(iv))
 		return E_SYSCALL;
 
+	log_i(fsc->logger, "Encrypting a file of length %lu bytes\n", in_len);
+
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
 			&ciphertext_out, &ciphertext_len,
 			iv, sizeof(iv),
 			encrypt_internal);
 	pthread_rwlock_unlock(&fsc->rwlock);
-	if (retval != S_OK)
+	if (retval != S_OK) {
+		log_e(fsc->logger, "Encryption failed\n");
 		goto end;
+	}
 
 	/* Return a blob with the IV + the ciphertext */
 	*out_len = sizeof(iv) + ciphertext_len;
@@ -255,12 +259,17 @@ int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *fsc,
 	in += ivlen;
 	in_len -= ivlen;
 
+	log_i(fsc->logger, "Decrypting a file of length %lu bytes\n", in_len);
+
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
 			out, out_len,
 			iv, ivlen,
 			decrypt_internal);
 	pthread_rwlock_unlock(&fsc->rwlock);
+
+	if (retval != S_OK)
+		log_e(fsc->logger, "Decryption failed\n");
 
 	return retval;
 }
