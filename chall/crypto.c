@@ -26,7 +26,7 @@ static size_t get_random_bytes(uint8_t *dst, size_t len)
 	return read_bytes;
 }
 
-static int load_challenge(fsroot_crypto_t *fsc, const char *libch, unsigned int index)
+static int load_challenge(crypto_t *fsc, const char *libch, unsigned int index)
 {
 	void *handle = dlopen(libch, RTLD_NOW);
 
@@ -42,7 +42,7 @@ static int load_challenge(fsroot_crypto_t *fsc, const char *libch, unsigned int 
 	return S_OK;
 }
 
-static void unload_challenge(fsroot_crypto_t *fsc, unsigned int index)
+static void unload_challenge(crypto_t *fsc, unsigned int index)
 {
 	/* Unload the challenge at the designated index */
 	log_i(fsc->logger, "Unloading challenge: %s\n", fsc->challenges[index]);
@@ -72,7 +72,7 @@ static void memxor(uint8_t *dst, const uint8_t *src, size_t len)
 		dst[i] = src[i] ^ dst[i];
 }
 
-static int fsroot_run_challenges(fsroot_crypto_t *fsc,
+static int fsroot_run_challenges(crypto_t *fsc,
 		const uint8_t *in, size_t in_len,
 		uint8_t **out, size_t *out_len,
 		const uint8_t *iv, size_t ivlen,
@@ -107,7 +107,7 @@ static int fsroot_run_challenges(fsroot_crypto_t *fsc,
 
 #define INITIAL_SLOTS 5
 
-void fsroot_crypto_init(fsroot_crypto_t *fsc)
+void crypto_init(crypto_t *fsc)
 {
 	pthread_rwlock_init(&fsc->rwlock, NULL);
 	fsc->num_challenges = 0;
@@ -117,9 +117,9 @@ void fsroot_crypto_init(fsroot_crypto_t *fsc)
 	fsc->logger = NULL;
 }
 
-void fsroot_crypto_deinit(fsroot_crypto_t *fsc)
+void crypto_deinit(crypto_t *fsc)
 {
-	fsroot_crypto_unload_all_challenges(fsc);
+	crypto_unload_all_challenges(fsc);
 
 	fsc->num_challenges = 0;
 	fsc->num_slots = 0;
@@ -130,13 +130,13 @@ void fsroot_crypto_deinit(fsroot_crypto_t *fsc)
 	log_i(fsc->logger, "crypto: Deinitialized engine\n");
 }
 
-void fsroot_crypto_set_logger(fsroot_crypto_t *fsc, struct logger *logger)
+void crypto_set_logger(crypto_t *fsc, struct logger *logger)
 {
 	if (fsc)
 		fsc->logger = logger;
 }
 
-static void resize_slots(fsroot_crypto_t *fsc)
+static void resize_slots(crypto_t *fsc)
 {
 	size_t num_slots = fsc->num_slots << 1;
 	mm_realloc(fsc->challenges, num_slots);
@@ -144,7 +144,7 @@ static void resize_slots(fsroot_crypto_t *fsc)
 	fsc->num_slots = num_slots;
 }
 
-int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
+int crypto_load_challenge(crypto_t *fsc, const char *libch)
 {
 	/* 'FSROOT_E_NOMEM' means we reached the maximum number challenges allowed (currently 5) */
 	int retval = E_NOMEM;
@@ -186,7 +186,7 @@ int fsroot_crypto_load_challenge(fsroot_crypto_t *fsc, const char *libch)
 	return retval;
 }
 
-int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
+int crypto_unload_challenge(crypto_t *fsc, const char *libch)
 {
 	int retval = E_NOTFOUND;
 
@@ -205,7 +205,7 @@ int fsroot_crypto_unload_challenge(fsroot_crypto_t *fsc, const char *libch)
 	return retval;
 }
 
-int fsroot_crypto_encrypt_with_challenges(fsroot_crypto_t *fsc,
+int crypto_encrypt_with_challenges(crypto_t *fsc,
 	const uint8_t *in, size_t in_len,
 	uint8_t **out, size_t *out_len)
 {
@@ -246,7 +246,7 @@ end:
 	return retval;
 }
 
-int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *fsc,
+int crypto_decrypt_with_challenges(crypto_t *fsc,
 		const uint8_t *in, size_t in_len,
 		uint8_t **out, size_t *out_len)
 {
@@ -278,7 +278,7 @@ int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *fsc,
  * \param[in] fsc
  * \return The number of challenges loaded
  */
-size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *fsc)
+size_t crypto_num_challenges_loaded(crypto_t *fsc)
 {
 	int retval;
 
@@ -294,7 +294,7 @@ size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *fsc)
  * \param[in] c
  * \return The number of challenges loaded, or negative value on error
  */
-int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
+int crypto_load_challenges_from_config(crypto_t *fsc, config_t *c)
 {
 	int retval;
 	list_head_t h;
@@ -308,7 +308,7 @@ int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
 		for (struct list_node_st *cur_node = h.first;
 				cur_node;
 				cur_node = cur_node->next) {
-			retval = fsroot_crypto_load_challenge(fsc, cur_node->value);
+			retval = crypto_load_challenge(fsc, cur_node->value);
 			if (retval != S_OK)
 				break;
 		}
@@ -331,7 +331,7 @@ int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *fsc, config_t *c)
 /**
  * \param[in] fsc
  */
-void fsroot_crypto_unload_all_challenges(fsroot_crypto_t *fsc)
+void crypto_unload_all_challenges(crypto_t *fsc)
 {
 	pthread_rwlock_wrlock(&fsc->rwlock);
 	if (fsc->num_challenges > 0) {

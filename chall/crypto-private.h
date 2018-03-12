@@ -9,7 +9,7 @@
 #define CRYPTO_PRIVATE_H_
 #include <pthread.h>
 
-struct fsroot_crypto_st
+struct crypto_st
 {
 	pthread_rwlock_t rwlock;
 	size_t num_challenges;

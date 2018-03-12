@@ -12,27 +12,28 @@
 #include "configuration.h"
 
 #include "crypto-private.h"
-typedef struct fsroot_crypto_st fsroot_crypto_t;
+typedef struct crypto_st crypto_t;
 
-void fsroot_crypto_init(fsroot_crypto_t *);
-void fsroot_crypto_deinit(fsroot_crypto_t *);
+void crypto_init(crypto_t *);
+void crypto_deinit(crypto_t *);
 
-void fsroot_crypto_set_logger(fsroot_crypto_t *, struct logger *);
+void crypto_set_logger(crypto_t *, struct logger *);
+int crypto_set_algorithm(crypto_t *, const char *);
 
-int fsroot_crypto_load_challenge(fsroot_crypto_t *, const char *);
-int fsroot_crypto_unload_challenge(fsroot_crypto_t *, const char *);
+int crypto_load_challenge(crypto_t *, const char *);
+int crypto_unload_challenge(crypto_t *, const char *);
 
-int fsroot_crypto_encrypt_with_challenges(fsroot_crypto_t *,
+int crypto_encrypt_with_challenges(crypto_t *,
 		const uint8_t *, size_t,
 		uint8_t **, size_t *);
-int fsroot_crypto_decrypt_with_challenges(fsroot_crypto_t *,
+int crypto_decrypt_with_challenges(crypto_t *,
 		const uint8_t *, size_t,
 		uint8_t **, size_t *);
 
-int fsroot_crypto_load_challenges_from_config(fsroot_crypto_t *, config_t *);
-void fsroot_crypto_unload_all_challenges(fsroot_crypto_t *);
+int crypto_load_challenges_from_config(crypto_t *, config_t *);
+void crypto_unload_all_challenges(crypto_t *);
 
-size_t fsroot_crypto_num_challenges_loaded(fsroot_crypto_t *);
+size_t crypto_num_challenges_loaded(crypto_t *);
 
 #endif
 

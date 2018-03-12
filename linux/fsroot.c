@@ -60,9 +60,9 @@ struct _fsroot_st
 	struct fsroot_open_files open_files;
 };
 
-fsroot_crypto_t fs_crypto;
+crypto_t fs_crypto;
 
-typedef int (* challenge_loader_fn_t) (fsroot_crypto_t *, const char *);
+typedef int (* challenge_loader_fn_t) (crypto_t *, const char *);
 
 static int fsroot_fullpath(const char *root_path, const char *in, char *out, size_t outlen)
 {
@@ -129,13 +129,13 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 	if (file->buf_len == -1)
 		goto error;
 
-	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
+	if (crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
 		/* Load challenges */
-		if (fsroot_crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
+		if (crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
 			goto error;
 	}
 
-	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) > 0) {
+	if (crypto_num_challenges_loaded(&fs_crypto) > 0) {
 		/*
 		 * I'd rather not even try to deal with partial ciphertext.
 		 * Just fail if we read fewer bytes than expected.
@@ -143,7 +143,7 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 		if (file->buf_len < offset)
 			goto error;
 
-		if (fsroot_crypto_decrypt_with_challenges(&fs_crypto,
+		if (crypto_decrypt_with_challenges(&fs_crypto,
 				(const uint8_t *) file->buf, (size_t) file->buf_len,
 				&decrypted, &decrypted_len) != S_OK)
 			goto error;
@@ -227,16 +227,16 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 		goto end;
 	}
 
-	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
+	if (crypto_num_challenges_loaded(&fs_crypto) == 0 && fs->c) {
 		/* Load challenges */
-		if (fsroot_crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
+		if (crypto_load_challenges_from_config(&fs_crypto, fs->c) < 0)
 			return E_SYSCALL;
 	}
 
 	pthread_rwlock_rdlock(&file->rwlock);
 
-	if (fsroot_crypto_num_challenges_loaded(&fs_crypto) > 0) {
-		retval = fsroot_crypto_encrypt_with_challenges(
+	if (crypto_num_challenges_loaded(&fs_crypto) > 0) {
+		retval = crypto_encrypt_with_challenges(
 			&fs_crypto,
 			(const uint8_t *) file->buf, file->buf_len,
 			&encrypted, &encrypted_len);
@@ -345,7 +345,7 @@ static unsigned int __fsroot_close(fsroot_t *fs, struct fsroot_file *file)
 	pthread_rwlock_unlock(&open_files->rwlock);
 
 	/* If there are no open files left, unload all the challenges */
-	fsroot_crypto_unload_all_challenges(&fs_crypto);
+	crypto_unload_all_challenges(&fs_crypto);
 
 end:
 	return num_deleted_files;
@@ -1454,7 +1454,7 @@ void fsroot_deinit(fsroot_t **fs)
 		mm_free((*fs)->database_file);
 		mm_free((*fs)->c);
 		mm_free(*fs);
-		fsroot_crypto_deinit(&fs_crypto);
+		crypto_deinit(&fs_crypto);
 	}
 }
 
@@ -1617,8 +1617,8 @@ int fsroot_init(fsroot_t **fs, struct logger *l)
 			sizeof(struct fsroot_file_descriptor*));
 	pthread_rwlock_init(&fsroot->open_files.rwlock, NULL);
 
-	fsroot_crypto_init(&fs_crypto);
-	fsroot_crypto_set_logger(&fs_crypto, l);
+	crypto_init(&fs_crypto);
+	crypto_set_logger(&fs_crypto, l);
 
 	return S_OK;
 }
