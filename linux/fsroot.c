@@ -19,10 +19,10 @@
 #include <pthread.h>
 #include "fsroot.h"
 
-#include "configuration.h"
+#include "chall/configuration.h"
+#include "chall/crypto.h"
 #include "fsroot-internal.h"
 #include "fsroot-db.h"
-#include "crypto.h"
 #include "hash.h"
 #include "log.h"
 #include "mm.h"

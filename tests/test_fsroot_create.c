@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include "../fsroot.h"
+#include "../linux/fsroot.h"
 
 char dir[] = "fsroot-root";
 char foo_data[] = "Hello, world! This is 'foo'.",

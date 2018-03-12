@@ -1,9 +1,9 @@
 AC_INIT([libfsroot], [1.0], [ander.juaristi AT tecnalia.com])
 
-AM_INIT_AUTOMAKE([gnu -Wall -Werror])
+AM_INIT_AUTOMAKE([subdir-objects gnu -Wall -Werror])
 
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_FILES([Makefile tests/Makefile])
+AC_CONFIG_FILES([Makefile linux/Makefile chall/Makefile tests/Makefile])
 AC_CONFIG_MACRO_DIR([m4])
 
 PKG_CHECK_MODULES([FUSE], [fuse])

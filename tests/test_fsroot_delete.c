@@ -1,7 +1,7 @@
 #include <check.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include "../fsroot.h"
+#include "../linux/fsroot.h"
 #include "utils.h"
 
 START_TEST(test_fsroot_delete_file_released)

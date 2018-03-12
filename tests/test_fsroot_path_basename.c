@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <malloc.h>
 #include <check.h>
-#include "../fsroot-path.h"
+#include "../linux/fsroot-path.h"
 
 static void test_basename(struct fsroot_path *p, const char *expected_basename)
 {

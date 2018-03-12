@@ -28,6 +28,9 @@ void log_set_stream(struct logger *l, enum log_priorities prio, FILE *fp)
 		case LOG_INFO:
 			l->i = fp;
 			break;
+		case LOG_ERROR:
+			l->e = fp;
+			break;
 		case LOG_DEBUG:
 			l->d = fp;
 			break;

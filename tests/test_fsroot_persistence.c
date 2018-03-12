@@ -6,8 +6,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sqlite3.h>
-#include "../fsroot.h"
-#include "../fsroot-db.h"
+#include "../linux/fsroot.h"
+#include "../linux/fsroot-db.h"
 #include "../mm.h"
 
 #define DB_FILE "mydb.db"

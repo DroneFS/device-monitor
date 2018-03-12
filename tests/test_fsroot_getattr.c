@@ -4,7 +4,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
-#include "../fsroot.h"
+#include "../linux/fsroot.h"
 
 char dir[] = "fsroot-root";
 
