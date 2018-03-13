@@ -8,6 +8,7 @@
 #ifndef CRYPTO_INTERNAL_H_
 #define CRYPTO_INTERNAL_H_
 #include <stdint.h>
+#include "crypto.h"
 #include "crypto-private.h"
 
 #define AES_KEY_LENGTH 16
@@ -30,5 +31,7 @@ int decrypt_internal(const uint8_t *, size_t,
 		uint8_t **, size_t *,
 		uint8_t *, size_t,
 		const uint8_t *, size_t);
+
+void rnd_init_default(crypto_t *fsc);
 
 #endif /* CRYPTO_INTERNAL_H_ */

@@ -11,11 +11,16 @@
 
 #include "configuration.h"
 
-#include "crypto-private.h"
+/* Return values */
+#define CRYPTO_OK 			 0
+#define CRYPTO_INVALID_ALGORITHM	-1
+#define CRYPTO_INVALID_KEY_LEN		-2
+#define CRYPTO_INVALID_MODE		-3
+
 typedef struct crypto_st crypto_t;
 
-void crypto_init(crypto_t *);
-void crypto_deinit(crypto_t *);
+void crypto_init(crypto_t **);
+void crypto_deinit(crypto_t **);
 
 void crypto_set_logger(crypto_t *, struct logger *);
 int crypto_set_algorithm(crypto_t *, const char *);

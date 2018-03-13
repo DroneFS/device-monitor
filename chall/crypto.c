@@ -107,27 +107,47 @@ static int fsroot_run_challenges(crypto_t *fsc,
 
 #define INITIAL_SLOTS 5
 
-void crypto_init(crypto_t *fsc)
+void crypto_init(crypto_t **fsc)
 {
-	pthread_rwlock_init(&fsc->rwlock, NULL);
-	fsc->num_challenges = 0;
-	fsc->num_slots = INITIAL_SLOTS;
-	fsc->challenges = mm_new(INITIAL_SLOTS, char *);
-	fsc->handles = mm_new(INITIAL_SLOTS, void *);
-	fsc->logger = NULL;
+	crypto_t *fscp;
+
+	if (fsc) {
+		*fsc = mm_new0(crypto_t);
+		fscp = *fsc;
+
+		pthread_rwlock_init(&fscp->rwlock, NULL);
+
+		fscp->num_challenges = 0;
+		fscp->num_slots = INITIAL_SLOTS;
+		fscp->challenges = mm_new(INITIAL_SLOTS, char *);
+		fscp->handles = mm_new(INITIAL_SLOTS, void *);
+		fscp->logger = NULL;
+
+		fscp->algo.algo = ALGO_UNKNOWN;
+		fscp->algo.keylen = KEYLEN_UNKNOWN;
+		fscp->algo.mode = MODE_UNKNOWN;
+	}
 }
 
-void crypto_deinit(crypto_t *fsc)
+void crypto_deinit(crypto_t **fsc)
 {
-	crypto_unload_all_challenges(fsc);
+	crypto_t *fscp;
 
-	fsc->num_challenges = 0;
-	fsc->num_slots = 0;
-	mm_free(fsc->challenges);
-	mm_free(fsc->handles);
+	if (fsc && *fsc) {
+		fscp = *fsc;
 
-	pthread_rwlock_destroy(&fsc->rwlock);
-	log_i(fsc->logger, "crypto: Deinitialized engine\n");
+		crypto_unload_all_challenges(fscp);
+
+		fscp->num_challenges = 0;
+		fscp->num_slots = 0;
+		mm_free(fscp->challenges);
+		mm_free(fscp->handles);
+
+		pthread_rwlock_destroy(&fscp->rwlock);
+		log_i(fscp->logger, "crypto: Deinitialized engine\n");
+
+		*fsc = NULL;
+	}
 }
 
 void crypto_set_logger(crypto_t *fsc, struct logger *logger)

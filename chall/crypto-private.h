@@ -9,6 +9,17 @@
 #define CRYPTO_PRIVATE_H_
 #include <pthread.h>
 
+#define ALGO_UNKNOWN	0
+#define ALGO_AES	1
+
+#define KEYLEN_UNKNOWN	0
+
+enum block_cipher_mode {
+	MODE_UNKNOWN = 0,
+	MODE_CBC,
+	MODE_CTR
+};
+
 struct crypto_st
 {
 	pthread_rwlock_t rwlock;
@@ -17,6 +28,14 @@ struct crypto_st
 	char **challenges;
 	void **handles;
 	struct logger *logger;
+
+	struct {
+		unsigned int algo;
+		unsigned int keylen;
+		enum block_cipher_mode mode;
+	} algo;
+
+
 };
 
 #endif /* CRYPTO_PRIVATE_H_ */
