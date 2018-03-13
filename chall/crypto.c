@@ -102,7 +102,7 @@ static int fsroot_run_challenges(crypto_t *fsc,
 		}
 	}
 
-	return f(in, in_len, out, out_len, key, keylen, iv, ivlen);
+	return f(fsc, in, in_len, out, out_len, key, keylen, iv, ivlen);
 }
 
 #define INITIAL_SLOTS 5

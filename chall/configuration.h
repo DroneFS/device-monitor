@@ -20,6 +20,7 @@ typedef struct config_st
 {
 	void (*deinit) (struct config_st **);
 	size_t (*get_challenges_list) (struct config_st *, list_head_t *);
+	char * (*get_crypto_algorithm) (struct config_st *);
 
 	void *priv;
 } config_t;

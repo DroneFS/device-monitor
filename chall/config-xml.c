@@ -20,6 +20,7 @@ int config_init_xml(config_t *c, const char *filename)
 
 static void deinit(config_t **);
 static size_t get_challenges_list(config_t *, list_head_t *);
+static char *get_crypto_algorithm(config_t *);
 
 int config_init_xml(config_t *c, const char *filename)
 {
@@ -36,6 +37,7 @@ int config_init_xml(config_t *c, const char *filename)
 
 	c->deinit = deinit;
 	c->get_challenges_list = get_challenges_list;
+	c->get_crypto_algorithm = get_crypto_algorithm;
 	c->priv = doc;
 	return CONFIG_OK;
 }
@@ -95,5 +97,45 @@ end:
 	xmlXPathFreeContext(xpath_ctx);
 
 	return list_count(h);
+}
+
+static char *read_algo(xmlNodePtr child)
+{
+	return (child && child->type == XML_TEXT_NODE && child->content) ?
+			strdup((const char *) child->content) :
+			NULL;
+}
+
+static char *get_crypto_algorithm(config_t *c)
+{
+	char *algo = NULL;
+	xmlDocPtr doc = NULL;
+	xmlXPathContextPtr xpath_ctx = NULL;
+	xmlXPathObjectPtr xpath_obj = NULL;
+
+	doc = c->priv;
+	if (!doc)
+		goto end;
+
+	xpath_ctx = xmlXPathNewContext(doc);
+	if (!xpath_ctx)
+		goto end;
+
+	xpath_obj = xmlXPathEvalExpression(BAD_CAST "/DroneFSConfig/CipherData",
+			xpath_ctx);
+	if (!xpath_obj)
+		goto end;
+
+	if (xpath_obj->nodesetval &&
+			xpath_obj->nodesetval->nodeTab[0] &&
+			xpath_obj->nodesetval->nodeTab[0]->type == XML_ELEMENT_NODE &&
+			xpath_obj->nodesetval->nodeTab[0]->children)
+		algo = read_algo(&xpath_obj->nodesetval->nodeTab[0]->children[0]);
+
+end:
+	xmlXPathFreeObject(xpath_obj);
+	xmlXPathFreeContext(xpath_ctx);
+
+	return algo;
 }
 #endif /* HAVE_LIBXML */

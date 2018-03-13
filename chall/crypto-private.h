@@ -34,8 +34,6 @@ struct crypto_st
 		unsigned int keylen;
 		enum block_cipher_mode mode;
 	} algo;
-
-
 };
 
 #endif /* CRYPTO_PRIVATE_H_ */

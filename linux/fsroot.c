@@ -1574,14 +1574,23 @@ int fsroot_set_root_directory(fsroot_t *fs, const char *dir)
 
 int fsroot_set_config_file(fsroot_t *fs, const char *filename)
 {
+	char *algo;
+	int retval = S_OK;
+
 	fs->c = mm_new0(config_t);
 
-	if (config_init(fs->c, filename) == CONFIG_OK) {
-		return S_OK;
-	} else {
+	if (config_init(fs->c, filename) != CONFIG_OK) {
 		mm_free(fs->c);
 		return E_UNKNOWN;
 	}
+
+	algo = fs->c->get_crypto_algorithm(fs->c);
+	if (algo) {
+		retval = crypto_set_algorithm(fs->fs_crypto, algo);
+		mm_free(algo);
+	}
+
+	return retval;
 }
 
 /**

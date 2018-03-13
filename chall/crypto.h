@@ -16,6 +16,8 @@
 #define CRYPTO_INVALID_ALGORITHM	-1
 #define CRYPTO_INVALID_KEY_LEN		-2
 #define CRYPTO_INVALID_MODE		-3
+#define CRYPTO_INVALID_IV_LEN		-4
+#define CRYPTO_UNKNOWN_ERROR		-5
 
 typedef struct crypto_st crypto_t;
 
