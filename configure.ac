@@ -25,7 +25,7 @@ LT_INIT
 
 AC_ARG_WITH([openssl],
   [AS_HELP_STRING([--with-openssl], [Use OpenSSL instead of libgcrypt])],
-  [crypto_lib=openssl],
+  [crypto_lib=openssl && CRYPTOLIB_PATH=$withval],
   [crypto_lib=gcrypt])
 AC_ARG_WITH([libxml2],
   [AS_HELP_STRING([--with-libxml2], [Use XML config files])],
@@ -35,6 +35,13 @@ AC_ARG_WITH([libxml2],
 #
 # Check for the crypto library (currently either gcrypt or OpenSSL)
 #
+if test "$crypto_lib" == "gcrypt" && test "$CRYPTOLIB-PATH" == "no"; then
+  crypto_lib="openssl"
+fi
+if test "$crypto_lib" == "openssl" && test "$CRYPTOLIB_PATH" == "no"; then
+  crypto_lib="gcrypt"
+fi
+
 if test "$crypto_lib" == "gcrypt"; then
   AC_CHECK_LIB([gcrypt], [gcry_cipher_close],
     [libgcrypt_available=yes],
@@ -106,6 +113,10 @@ else
   DOCS="No. Doxygen docs were disabled"
 fi
 
+if test "x$CRYPTOLIB_PATH" != "xno" && test "x$CRYPTOLIB_PATH" != "xyes" && test "x$CRYPTOLIB_PATH" != "x"; then
+  CFLAGS="-I$CRYPTOLIB_PATH/include -L$CRYPTOLIB_PATH/lib -Wl,-rpath,$CRYPTOLIB_PATH/lib $CFLAGS"
+fi
+
 AC_OUTPUT
 
 echo
@@ -117,7 +128,12 @@ else
   echo " (OK)"
 fi
 echo "Use LibXML2: $use_libxml"
-echo "Crypto library: $crypto_lib"
+echo -n "Crypto library: $crypto_lib"
+if test "x$CRYPTOLIB_PATH" != "xno" && test "x$CRYPTOLIB_PATH" != "xyes" && test "x$CRYPTOLIB_PATH" != "x"; then
+  echo " ('$CRYPTOLIB_PATH')"
+else
+  echo
+fi
 echo "Docs: $DOCS"
 echo "Unit tests: $TESTS"
 echo
