@@ -6,6 +6,7 @@
  */
 #include <string.h>
 #include <openssl/aes.h>
+#include <openssl/modes.h>
 #include "crypto-internal.h"
 #include "mm.h"
 #include "return-codes.h"
@@ -41,19 +42,13 @@ static void AES_CTR_encrypt(const uint8_t *in, size_t in_len,
 		const AES_KEY *key,
 		unsigned char *iv)
 {
-	unsigned long offset = 0;
 	struct ctr_state state;
 
 	init_ctr(&state, iv);
 
-	while (offset < in_len) {
-		AES_ctr128_encrypt(in + offset,
-				out + offset,
-				in_len,
-				key,
-				state.ivec, state.ecount, &state.num);
-		offset += AES_BLOCK_SIZE;
-	}
+	CRYPTO_ctr128_encrypt(in, out, in_len, key,
+			state.ivec, state.ecount, &state.num,
+			(void (*) (const unsigned char *, unsigned char *, const void *)) AES_encrypt);
 }
 
 int encrypt_internal(crypto_t *fsc,
@@ -76,6 +71,7 @@ int encrypt_internal(crypto_t *fsc,
 	if (ivlen != AES_BLOCK_SIZE)
 		return CRYPTO_INVALID_IV_LEN;
 
+	/* Copy first 8 bytes of IV */
 	tmp_iv = mm_malloc0(ivlen);
 	memcpy(tmp_iv, iv, ivlen);
 
@@ -87,6 +83,7 @@ int encrypt_internal(crypto_t *fsc,
 		AES_CBC_encrypt(in, in_len, *out, &aes_key, tmp_iv);
 		break;
 	case MODE_CTR:
+		*out_len -= PADDING_LENGTH(in_len);
 		AES_CTR_encrypt(in, in_len, *out, &aes_key, tmp_iv);
 		break;
 	default:
@@ -95,6 +92,12 @@ int encrypt_internal(crypto_t *fsc,
 	}
 
 	mm_free(tmp_iv);
+
+	if (retval != S_OK) {
+		mm_free(*out);
+		*out_len = 0;
+	}
+
 	return retval;
 }
 
@@ -128,13 +131,11 @@ int decrypt_internal(crypto_t *fsc,
 	if (keylen != AES_KEY_LENGTH)
 		return CRYPTO_INVALID_KEY_LEN;
 
-	if (AES_set_decrypt_key(key, 128, &aes_key) != 0)
-		return CRYPTO_UNKNOWN_ERROR;
-
 	/* Check for proper length of IV */
 	if (ivlen != AES_BLOCK_SIZE)
 		return CRYPTO_INVALID_IV_LEN;
 
+	/* Copy the first 8 bits of IV */
 	tmp_iv = mm_malloc0(ivlen);
 	memcpy(tmp_iv, iv, ivlen);
 
@@ -143,10 +144,16 @@ int decrypt_internal(crypto_t *fsc,
 
 	switch (fsc->algo.mode) {
 	case MODE_CBC:
-		AES_CBC_decrypt(in, in_len, *out, &aes_key, tmp_iv);
+		if (AES_set_decrypt_key(key, 128, &aes_key) != 0)
+			retval = CRYPTO_UNKNOWN_ERROR;
+		else
+			AES_CBC_decrypt(in, in_len, *out, &aes_key, tmp_iv);
 		break;
 	case MODE_CTR:
-		AES_CTR_decrypt(in, in_len, *out, &aes_key, tmp_iv);
+		if (AES_set_encrypt_key(key, 128, &aes_key) != 0)
+			retval = CRYPTO_UNKNOWN_ERROR;
+		else
+			AES_CTR_decrypt(in, in_len, *out, &aes_key, tmp_iv);
 		break;
 	default:
 		retval = CRYPTO_INVALID_MODE;
@@ -154,5 +161,11 @@ int decrypt_internal(crypto_t *fsc,
 	}
 
 	mm_free(tmp_iv);
+
+	if (retval != S_OK) {
+		mm_free(*out);
+		*out_len = 0;
+	}
+
 	return retval;
 }
