@@ -17,7 +17,19 @@ int encrypt_internal(crypto_t *fsc,
 {
 	int retval = CRYPTO_UNKNOWN_ERROR;
 	size_t padding_len;
-	gcry_cipher_hd_t ctx;
+	gcry_cipher_hd_t ctx = NULL;
+
+	/* Key is always 128 bits for now */
+	if (keylen != AES_KEY_LENGTH) {
+		retval = CRYPTO_INVALID_KEY_LEN;
+		goto end;
+	}
+
+	/* Check proper length of IV */
+	if (ivlen != AES_BLOCK_LENGTH) {
+		retval = CRYPTO_INVALID_IV_LEN;
+		goto end;
+	}
 
 	/* Allocate output buffer - inlen + padding length */
 	padding_len = PADDING_LENGTH(in_len);
@@ -39,32 +51,30 @@ int encrypt_internal(crypto_t *fsc,
 		 */
 		memcpy(*out, in, in_len);
 		memset((*out) + in_len, (unsigned char) padding_len, padding_len);
+
+		if (gcry_cipher_setiv(ctx, iv, ivlen) != 0) {
+			retval = CRYPTO_UNKNOWN_ERROR;
+			goto end;
+		}
+
 		break;
 	case MODE_CTR:
+		*out_len -= padding_len;
+
 		if (gcry_cipher_open(&ctx, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CTR, 0) != 0)
 			goto end;
+
+		if (gcry_cipher_setctr(ctx, iv, ivlen) != 0) {
+			retval = CRYPTO_UNKNOWN_ERROR;
+			goto end;
+		}
+
 		break;
 	default:
 		return CRYPTO_INVALID_MODE;
 	}
 
-	/* Key is always 128 bits for now */
-	if (keylen != AES_KEY_LENGTH) {
-		retval = CRYPTO_INVALID_KEY_LEN;
-		goto end;
-	}
-
-	/* Check proper length of IV */
-	if (ivlen != AES_BLOCK_LENGTH) {
-		retval = CRYPTO_INVALID_IV_LEN;
-		goto end;
-	}
-
 	if (gcry_cipher_setkey(ctx, key, keylen) != 0) {
-		retval = CRYPTO_UNKNOWN_ERROR;
-		goto end;
-	}
-	if (gcry_cipher_setiv(ctx, iv, ivlen) != 0) {
 		retval = CRYPTO_UNKNOWN_ERROR;
 		goto end;
 	}
@@ -92,20 +102,6 @@ int decrypt_internal(crypto_t *fsc,
 	uint8_t *ptr, pad_len = 0, ctr = 0;
 	gcry_cipher_hd_t ctx;
 
-	/* Initialize gcrypt */
-	switch (fsc->algo.mode) {
-	case MODE_CBC:
-		if (gcry_cipher_open(&ctx, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CBC, 0) != 0)
-			goto end;
-		break;
-	case MODE_CTR:
-		if (gcry_cipher_open(&ctx, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CTR, 0) != 0)
-			goto end;
-		break;
-	default:
-		return CRYPTO_INVALID_MODE;
-	}
-
 	/* Key is always 128 bits for now */
 	if (keylen != AES_KEY_LENGTH) {
 		retval = CRYPTO_INVALID_KEY_LEN;
@@ -118,15 +114,6 @@ int decrypt_internal(crypto_t *fsc,
 		goto end;
 	}
 
-	if (gcry_cipher_setkey(ctx, key, keylen) != 0) {
-		retval = CRYPTO_UNKNOWN_ERROR;
-		goto end;
-	}
-	if (gcry_cipher_setiv(ctx, iv, ivlen) != 0) {
-		retval = CRYPTO_UNKNOWN_ERROR;
-		goto end;
-	}
-
 	/*
 	 * Allocate output buffer to be of the same length
 	 * as the input buffer - we'll remove the padding and resize
@@ -134,6 +121,37 @@ int decrypt_internal(crypto_t *fsc,
 	 */
 	*out_len = in_len;
 	*out = mm_malloc0(in_len);
+
+	/* Initialize gcrypt */
+	switch (fsc->algo.mode) {
+	case MODE_CBC:
+		if (gcry_cipher_open(&ctx, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CBC, 0) != 0)
+			goto end;
+
+		if (gcry_cipher_setiv(ctx, iv, ivlen) != 0) {
+			retval = CRYPTO_UNKNOWN_ERROR;
+			goto end;
+		}
+
+		break;
+	case MODE_CTR:
+		if (gcry_cipher_open(&ctx, GCRY_CIPHER_AES128, GCRY_CIPHER_MODE_CTR, 0) != 0)
+			goto end;
+
+		if (gcry_cipher_setctr(ctx, iv, ivlen) != 0) {
+			retval = CRYPTO_UNKNOWN_ERROR;
+			goto end;
+		}
+
+		break;
+	default:
+		return CRYPTO_INVALID_MODE;
+	}
+
+	if (gcry_cipher_setkey(ctx, key, keylen) != 0) {
+		retval = CRYPTO_UNKNOWN_ERROR;
+		goto end;
+	}
 
 	/* Decrypt */
 	if (gcry_cipher_decrypt(ctx, *out, *out_len, in, in_len) != 0)
