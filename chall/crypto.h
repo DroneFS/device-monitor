@@ -27,6 +27,8 @@ void crypto_deinit(crypto_t **);
 void crypto_set_logger(crypto_t *, struct logger *);
 int crypto_set_algorithm(crypto_t *, const char *);
 
+char *crypto_get_algorithm_description(crypto_t *, const char *);
+
 int crypto_load_challenge(crypto_t *, const char *);
 int crypto_unload_challenge(crypto_t *, const char *);
 

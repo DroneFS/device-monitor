@@ -6,6 +6,7 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include "mm.h"
 #include "crypto.h"
 #include "crypto-private.h"
 
@@ -91,4 +92,39 @@ check:
 
 end:
 	return retval;
+}
+
+char *crypto_get_algorithm_description(crypto_t *fsc, const char *default_desc)
+{
+	char *algo = NULL, *mode;
+	size_t len = 3 + 3 + 3 + 2 + 1;
+
+	if (fsc->algo.algo == ALGO_UNKNOWN)
+		goto end;
+	if (fsc->algo.keylen != 128 &&
+			fsc->algo.keylen != 192 &&
+			fsc->algo.keylen != 256)
+		goto end;
+
+	switch (fsc->algo.mode) {
+	case MODE_CTR:
+		mode = "CTR";
+		break;
+	case MODE_CBC:
+		mode = "CBC";
+		break;
+	default:
+		goto end;
+	}
+
+	algo = mm_malloc0(len);
+	snprintf(algo, len, "AES-%d-%s",
+			fsc->algo.keylen,
+			mode);
+
+end:
+	if (algo == NULL && default_desc)
+		algo = strdup("<unknown>");
+
+	return algo;
 }

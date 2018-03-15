@@ -229,6 +229,7 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 	const uint8_t *in, size_t in_len,
 	uint8_t **out, size_t *out_len)
 {
+	char *algo;
 	int retval = S_OK;
 	uint8_t iv[AES_BLOCK_LENGTH];
 	uint8_t *ciphertext_out;
@@ -242,7 +243,9 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 	if (get_random_bytes(iv, sizeof(iv)) < sizeof(iv))
 		return E_SYSCALL;
 
-	log_i(fsc->logger, "Encrypting a file of length %lu bytes\n", in_len);
+	algo = crypto_get_algorithm_description(fsc, "<unknown>");
+	log_i(fsc->logger, "Encrypting a file of length %lu bytes (algo: %s)\n", in_len, algo);
+	mm_free(algo);
 
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
@@ -271,6 +274,7 @@ int crypto_decrypt_with_challenges(crypto_t *fsc,
 		uint8_t **out, size_t *out_len)
 {
 	int retval;
+	char *algo;
 	/* IV comes first */
 	const uint8_t *iv = in;
 	size_t ivlen = AES_BLOCK_LENGTH;
@@ -279,7 +283,9 @@ int crypto_decrypt_with_challenges(crypto_t *fsc,
 	in += ivlen;
 	in_len -= ivlen;
 
-	log_i(fsc->logger, "Decrypting a file of length %lu bytes\n", in_len);
+	algo = crypto_get_algorithm_description(fsc, "<unknown>");
+	log_i(fsc->logger, "Decrypting a file of length %lu bytes (algo: %s)\n", in_len, algo);
+	mm_free(algo);
 
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
