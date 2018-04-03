@@ -6,7 +6,6 @@
  */
 #include <string.h>
 #include <openssl/aes.h>
-#include <openssl/modes.h>
 #include "crypto-internal.h"
 #include "mm.h"
 #include "return-codes.h"
@@ -46,9 +45,8 @@ static void AES_CTR_encrypt(const uint8_t *in, size_t in_len,
 
 	init_ctr(&state, iv);
 
-	CRYPTO_ctr128_encrypt(in, out, in_len, key,
-			state.ivec, state.ecount, &state.num,
-			(void (*) (const unsigned char *, unsigned char *, const void *)) AES_encrypt);
+	AES_ctr128_encrypt(in, out, in_len, key,
+			state.ivec, state.ecount, &state.num);
 }
 
 int encrypt_internal(crypto_t *fsc,

@@ -6,7 +6,9 @@
  */
 #include <string.h>
 #include "mm.h"
+#ifndef ANDROID
 #include "config.h"
+#endif
 #include "configuration.h"
 
 #ifndef HAVE_LIBXML
