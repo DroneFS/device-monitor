@@ -6,11 +6,13 @@ libchall_la_SOURCES = configuration.c configuration.h config-lua.c config-xml.c 
 											crypto.c crypto.h crypto-algo.c \
 											../return-codes.h ../list.c ../list.h ../mm.c ../mm.h
 libchall_la_CFLAGS = $(CFLAGS)
-libchall_la_LDFLAGS = -llua5.1
+libchall_la_LDFLAGS = $(LDFLAGS)
 
 if HAVE_LIBXML
 libchall_la_CFLAGS += -I/usr/include/libxml2
 libchall_la_LDFLAGS += -lxml2
+else
+libchall_la_LDFLAGS += -llua5.1
 endif
 
 if HAVE_GCRYPT

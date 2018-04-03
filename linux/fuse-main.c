@@ -683,7 +683,6 @@ static int dm_fuse_opendir(const char *path, struct fuse_file_info *fi)
  * 	It uses the offset parameter and always passes non-zero offset to the filler function.
  * 	When the buffer is full (or an error happens) the filler function will return '1'.
  *
- * TODO implement: this basically requires iterating fsroot.
  */
 static int dm_fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 		off_t offset, struct fuse_file_info *fi)
