@@ -6,7 +6,6 @@
  */
 #include <string.h>
 #include "mm.h"
-#include "config.h"
 #include "configuration.h"
 
 #ifndef HAVE_LIBXML
@@ -37,7 +36,6 @@ int config_init_xml(config_t *c, const char *filename)
 
 	c->deinit = deinit;
 	c->get_challenges_list = get_challenges_list;
-	c->get_crypto_algorithm = get_crypto_algorithm;
 	c->priv = doc;
 	return CONFIG_OK;
 }

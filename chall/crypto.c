@@ -322,7 +322,7 @@ size_t crypto_num_challenges_loaded(crypto_t *fsc)
  */
 int crypto_load_challenges_from_config(crypto_t *fsc, config_t *c)
 {
-	int retval;
+	int retval = S_OK;
 	list_head_t h;
 
 	if (!fsc || !c)
