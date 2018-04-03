@@ -126,6 +126,8 @@ void crypto_init(crypto_t **fsc)
 		fscp->algo.algo = ALGO_UNKNOWN;
 		fscp->algo.keylen = KEYLEN_UNKNOWN;
 		fscp->algo.mode = MODE_UNKNOWN;
+
+		log_i(fscp->logger, "crypto: Initialized engine\n");
 	}
 }
 
