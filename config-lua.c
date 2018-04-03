@@ -6,12 +6,19 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include <lua5.1/lua.h>
-#include <lua5.1/lauxlib.h>
 
 #include "configuration.h"
 #include "list.h"
 #include "mm.h"
+
+#ifndef HAVE_LUA
+int config_init_lua(config_t *c, const char *filename)
+{
+	return CONFIG_E_UNSUPPORTED_TYPE;
+}
+#else
+#include <lua5.1/lua.h>
+#include <lua5.1/lauxlib.h>
 
 enum config_value_types
 {
@@ -205,3 +212,5 @@ static size_t config_get_challenges_list(config_t *c, list_head_t *h)
 end:
 	return num_challenges;
 }
+#endif /* HAVE_LUA */
+

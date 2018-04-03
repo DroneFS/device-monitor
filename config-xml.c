@@ -6,7 +6,6 @@
  */
 #include <string.h>
 #include "mm.h"
-#include "config.h"
 #include "configuration.h"
 
 #ifndef HAVE_LIBXML
