@@ -7,11 +7,11 @@ LOCAL_SRC_FILES := chall/crypto.c chall/crypto-openssl.c chall/config-xml.c chal
 LOCAL_MODULE := libchall
 LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror -DHAVE_LIBXML -DANDROID
 LOCAL_SHARED_LIBRARIES := libcrypto libxml2 libicuuc libdch
-LOCAL_PREBUILT_OBJ_FILES := config.xml
+LOCAL_REQUIRED_MODULES := config.xml
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
 # Uncomment these for debugging:
 # LOCAL_CFLAGS += -ggdb
 # LOCAL_STRIP_MODULE = false
-
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -23,11 +23,9 @@ LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
-
 LOCAL_MODULE := config.xml
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT)/etc/libchall
 LOCAL_SRC_FILES := config.xml
-
 include $(BUILD_PREBUILT)
 
