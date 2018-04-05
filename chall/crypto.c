@@ -13,6 +13,18 @@
 #include "mm.h"
 #include "return-codes.h"
 
+static uint8_t *get_key_from_challenge(void *handle)
+{
+	uint8_t *key = NULL;
+	unsigned char * (* func_execute)(unsigned char **);
+
+	func_execute = dlsym(handle, "execute");
+	if (func_execute)
+		key = (uint8_t *) func_execute(NULL);
+
+	return key;
+}
+
 static size_t get_random_bytes(uint8_t *dst, size_t len)
 {
 	size_t read_bytes = 0;
@@ -39,6 +51,7 @@ static int load_challenge(crypto_t *fsc, const char *libch, unsigned int index)
 	fsc->challenges[index] = strdup(libch);
 	fsc->handles[index] = handle;
 	log_i(fsc->logger, "Challenge loaded: %s\n", libch);
+
 	return S_OK;
 }
 
@@ -52,18 +65,6 @@ static void unload_challenge(crypto_t *fsc, unsigned int index)
 
 	fsc->challenges[index] = NULL;
 	fsc->handles[index] = NULL;
-}
-
-static uint8_t *get_key_from_challenge(void *handle)
-{
-	uint8_t *key = NULL;
-	unsigned char * (* func_execute)(unsigned char **);
-
-	func_execute = dlsym(handle, "execute");
-	if (func_execute)
-		key = (uint8_t *) func_execute(NULL);
-
-	return key;
 }
 
 static void memxor(uint8_t *dst, const uint8_t *src, size_t len)
@@ -126,8 +127,6 @@ void crypto_init(crypto_t **fsc)
 		fscp->algo.algo = ALGO_UNKNOWN;
 		fscp->algo.keylen = KEYLEN_UNKNOWN;
 		fscp->algo.mode = MODE_UNKNOWN;
-
-		log_i(fscp->logger, "crypto: Initialized engine\n");
 	}
 }
 
@@ -152,7 +151,7 @@ void crypto_deinit(crypto_t **fsc)
 	}
 }
 
-void crypto_set_logger(crypto_t *fsc, struct logger *logger)
+void crypto_set_logger(crypto_t *fsc, logger_t *logger)
 {
 	if (fsc)
 		fsc->logger = logger;
@@ -336,9 +335,14 @@ int crypto_load_challenges_from_config(crypto_t *fsc, config_t *c)
 		for (struct list_node_st *cur_node = h.first;
 				cur_node;
 				cur_node = cur_node->next) {
+			log_i(fsc->logger, "Loading challenge '%s'\n",
+					(const char *) cur_node->value);
 			retval = crypto_load_challenge(fsc, cur_node->value);
-			if (retval != S_OK)
+			if (retval != S_OK) {
+				log_e(fsc->logger, "Could not load challenge '%s'\n",
+					(const char *) cur_node->value);
 				break;
+			}
 		}
 	}
 

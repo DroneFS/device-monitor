@@ -8,12 +8,8 @@
 #define __LOG_H__
 #include <stdio.h>
 
-struct logger
-{
-	FILE *i;
-	FILE *e;
-	FILE *d;
-};
+struct logger;
+typedef struct logger logger_t;
 
 enum log_priorities {
 	LOG_INFO,
@@ -21,18 +17,21 @@ enum log_priorities {
 	LOG_DEBUG
 };
 
-void log_init(struct logger **);
-void log_deinit(struct logger **);
+typedef void (* logger_function_t) (logger_t *, enum log_priorities, const char *, ...);
 
-void log_set_stream(struct logger *, enum log_priorities prio, FILE *);
+void log_init(logger_t **);
+void log_deinit(logger_t **);
+
+void log_set_function(logger_t *, logger_function_t);
+void log_set_stream(logger_t *, enum log_priorities, FILE *);
 
 #define PRINTF_FORMAT(x, y) __attribute__ ((format (printf, x, y)))
 
-void log_i(struct logger *, const char *fmt, ...)
+void log_i(logger_t *, const char *fmt, ...)
 	PRINTF_FORMAT(2, 3);
-void log_e(struct logger *, const char *fmt, ...)
+void log_e(logger_t *, const char *fmt, ...)
 	PRINTF_FORMAT(2, 3);
-void log_d(struct logger *, const char *fmt, ...)
+void log_d(logger_t *, const char *fmt, ...)
 	PRINTF_FORMAT(2, 3);
 
 #endif

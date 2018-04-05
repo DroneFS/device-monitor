@@ -24,7 +24,7 @@ typedef struct crypto_st crypto_t;
 void crypto_init(crypto_t **);
 void crypto_deinit(crypto_t **);
 
-void crypto_set_logger(crypto_t *, struct logger *);
+void crypto_set_logger(crypto_t *, logger_t *);
 int crypto_set_algorithm(crypto_t *, const char *);
 
 char *crypto_get_algorithm_description(crypto_t *, const char *);

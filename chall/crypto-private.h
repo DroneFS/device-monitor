@@ -27,7 +27,7 @@ struct crypto_st
 	size_t num_slots;
 	char **challenges;
 	void **handles;
-	struct logger *logger;
+	logger_t *logger;
 
 	struct {
 		unsigned int algo;

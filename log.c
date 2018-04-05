@@ -9,21 +9,41 @@
 #include "mm.h"
 #include "return-codes.h"
 
-void log_init(struct logger **l)
+struct logger
+{
+	union {
+		struct {
+			FILE *i;
+			FILE *e;
+			FILE *d;
+		};
+		logger_function_t func;
+	};
+
+	enum {
+		UNSET = 0,
+		STREAM,
+		FUNCTION
+	} type;
+};
+
+void log_init(logger_t **l)
 {
 	if (l)
 		*l = mm_new0(struct logger);
 }
 
-void log_deinit(struct logger **l)
+void log_deinit(logger_t **l)
 {
 	if (l)
 		mm_free(*l);
 }
 
-void log_set_stream(struct logger *l, enum log_priorities prio, FILE *fp)
+void log_set_stream(logger_t *l, enum log_priorities prio, FILE *fp)
 {
 	if (l && fp) {
+		l->type = STREAM;
+
 		switch (prio) {
 		case LOG_INFO:
 			l->i = fp;
@@ -38,9 +58,17 @@ void log_set_stream(struct logger *l, enum log_priorities prio, FILE *fp)
 	}
 }
 
-static void vlog(struct logger *l,
-	enum log_priorities prio,
-	const char *fmt, va_list args)
+void log_set_function(logger_t *l, logger_function_t func)
+{
+	if (l && func) {
+		l->type = FUNCTION;
+		l->func = func;
+	}
+}
+
+static void vlog_stream(struct logger *l,
+		enum log_priorities prio,
+		const char *fmt, va_list args)
 {
 	char *prefix;
 	FILE *stream = NULL;
@@ -66,7 +94,25 @@ static void vlog(struct logger *l,
 	}
 }
 
-void log_i(struct logger *l, const char *fmt, ...)
+static void vlog_func(struct logger *l,
+		enum log_priorities prio,
+		const char *fmt, va_list args)
+{
+	if (l->func)
+		l->func(l, prio, fmt, args);
+}
+
+static void vlog(struct logger *l,
+	enum log_priorities prio,
+	const char *fmt, va_list args)
+{
+	if (l->type == STREAM)
+		vlog_stream(l, prio, fmt, args);
+	else
+		vlog_func(l, prio, fmt, args);
+}
+
+void log_i(logger_t *l, const char *fmt, ...)
 {
 	va_list args;
 
@@ -77,7 +123,7 @@ void log_i(struct logger *l, const char *fmt, ...)
 	}
 }
 
-void log_e(struct logger *l, const char *fmt, ...)
+void log_e(logger_t *l, const char *fmt, ...)
 {
 	va_list args;
 
@@ -88,7 +134,7 @@ void log_e(struct logger *l, const char *fmt, ...)
 	}
 }
 
-void log_d(struct logger *l, const char *fmt, ...)
+void log_d(logger_t *l, const char *fmt, ...)
 {
 	va_list args;
 
