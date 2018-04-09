@@ -75,7 +75,7 @@ static void memxor(uint8_t *dst, const uint8_t *src, size_t len)
 
 static int fsroot_run_challenges(crypto_t *fsc,
 		const uint8_t *in, size_t in_len,
-		uint8_t **out, size_t *out_len,
+		uint8_t *out, size_t out_len,
 		const uint8_t *iv, size_t ivlen,
 		fsroot_cipher_func_t f)
 {
@@ -103,7 +103,7 @@ static int fsroot_run_challenges(crypto_t *fsc,
 		}
 	}
 
-	return f(fsc, in, in_len, out, out_len, key, keylen, iv, ivlen);
+	return f(fsc, in, in_len, key, keylen, iv, ivlen, out, out_len);
 }
 
 #define INITIAL_SLOTS 5
@@ -226,6 +226,34 @@ int crypto_unload_challenge(crypto_t *fsc, const char *libch)
 	return retval;
 }
 
+static ssize_t get_expected_ciphertext_length(crypto_t *fsc, size_t in_len)
+{
+	ssize_t out_len = in_len;
+
+	if (fsc->algo.mode == MODE_CBC)
+		out_len += PADDING_LENGTH(in_len);
+	else if (fsc->algo.mode != MODE_CTR)
+		return CRYPTO_INVALID_MODE;
+
+	return out_len;
+}
+
+ssize_t crypto_get_expected_output_length(crypto_t *fsc, size_t in_len)
+{
+	ssize_t ciphertext_len;
+
+	if (!fsc)
+		return E_BADARGS;
+
+	/* This returns the length of the ciphertext only (without the IV) */
+	ciphertext_len = get_expected_ciphertext_length(fsc, in_len);
+	if (ciphertext_len <= 0)
+		return ciphertext_len;
+
+	/* Currently all IVs we use have a fixed length of 16 bytes (an AES block) */
+	return AES_BLOCK_LENGTH + ciphertext_len;
+}
+
 int crypto_encrypt_with_challenges(crypto_t *fsc,
 	const uint8_t *in, size_t in_len,
 	uint8_t **out, size_t *out_len)
@@ -234,39 +262,46 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 	int retval = S_OK;
 	uint8_t iv[AES_BLOCK_LENGTH];
 	uint8_t *ciphertext_out;
-	size_t ciphertext_len;
+	ssize_t ciphertext_len;
 
 	if (!in || !in_len ||
 		!out || !out_len)
 		return E_BADARGS;
 
+	if (crypto_num_challenges_loaded(fsc) == 0)
+		return E_EMPTY;
+
 	/* Generate a random IV of the same length as the AES block size */
 	if (get_random_bytes(iv, sizeof(iv)) < sizeof(iv))
 		return E_SYSCALL;
+
+	if ((ciphertext_len = get_expected_ciphertext_length(fsc, in_len)) < 0)
+		return ciphertext_len;
+
+	/* We return a blob with the IV + the ciphertext */
+	ciphertext_out = mm_malloc0(sizeof(iv) + ciphertext_len);
 
 	algo = crypto_get_algorithm_description(fsc, "<unknown>");
 	log_i(fsc->logger, "Encrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
+	/* Run the challenges and generate the ciphertext */
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
-			&ciphertext_out, &ciphertext_len,
+			ciphertext_out + sizeof(iv), ciphertext_len,
 			iv, sizeof(iv),
 			encrypt_internal);
 	pthread_rwlock_unlock(&fsc->rwlock);
+
 	if (retval != S_OK) {
+		mm_free(ciphertext_out);
 		log_e(fsc->logger, "Encryption failed\n");
-		goto end;
+	} else {
+		memcpy(ciphertext_out, iv, sizeof(iv));
+		*out = ciphertext_out;
+		*out_len = sizeof(iv) + ciphertext_len;
 	}
 
-	/* Return a blob with the IV + the ciphertext */
-	*out_len = sizeof(iv) + ciphertext_len;
-	*out = mm_malloc0(*out_len);
-	memcpy(*out, iv, sizeof(iv));
-	memcpy((*out) + sizeof(iv), ciphertext_out, ciphertext_len);
-	mm_free(ciphertext_out);
-
-end:
 	return retval;
 }
 
@@ -279,6 +314,7 @@ int crypto_decrypt_with_challenges(crypto_t *fsc,
 	/* IV comes first */
 	const uint8_t *iv = in;
 	size_t ivlen = AES_BLOCK_LENGTH;
+	uint8_t *plaintext_out;
 
 	/* Ciphertext comes right after IV */
 	in += ivlen;
@@ -288,15 +324,22 @@ int crypto_decrypt_with_challenges(crypto_t *fsc,
 	log_i(fsc->logger, "Decrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
+	plaintext_out = mm_malloc0(in_len);
+
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
-			out, out_len,
+			plaintext_out, in_len,
 			iv, ivlen,
 			decrypt_internal);
 	pthread_rwlock_unlock(&fsc->rwlock);
 
-	if (retval != S_OK)
+	if (retval != S_OK) {
+		mm_free(plaintext_out);
 		log_e(fsc->logger, "Decryption failed\n");
+	} else {
+		*out_len = in_len;
+		*out = plaintext_out;
+	}
 
 	return retval;
 }

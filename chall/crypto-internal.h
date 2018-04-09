@@ -16,24 +16,24 @@
 
 typedef int (* fsroot_cipher_func_t)(crypto_t *,
 		const uint8_t *, size_t,	/* Input */
-		uint8_t **, size_t *,		/* Output */
 		uint8_t *, size_t,		/* Key */
-		const uint8_t *, size_t);	/* IV */
+		const uint8_t *, size_t,	/* IV */
+		uint8_t *, size_t);		/* Output */
 
 #define PADDING_LENGTH(in_len) \
 	(AES_BLOCK_LENGTH - (in_len % AES_BLOCK_LENGTH))
 
 int encrypt_internal(crypto_t *,
 		const uint8_t *, size_t,
-		uint8_t **, size_t *,
 		uint8_t *, size_t,
-		const uint8_t *, size_t);
+		const uint8_t *, size_t,
+		uint8_t *, size_t out_len);
 
 int decrypt_internal(crypto_t *,
 		const uint8_t *, size_t,
-		uint8_t **, size_t *,
 		uint8_t *, size_t,
-		const uint8_t *, size_t);
+		const uint8_t *, size_t,
+		uint8_t *, size_t out_len);
 
 void rnd_init_default(crypto_t *fsc);
 
