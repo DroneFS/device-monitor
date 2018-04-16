@@ -268,6 +268,11 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 		!out || !out_len)
 		return E_BADARGS;
 
+	if (fsc->algo.algo == ALGO_UNKNOWN ||
+		fsc->algo.keylen == KEYLEN_UNKNOWN ||
+		fsc->algo.mode == MODE_UNKNOWN)
+		return E_NOTINITIALIZED;
+
 	if (crypto_num_challenges_loaded(fsc) == 0)
 		return E_EMPTY;
 
@@ -305,6 +310,54 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 	return retval;
 }
 
+int crypto_encrypt_with_challenges2(crypto_t *fsc,
+		const uint8_t *in, size_t in_len,
+		uint8_t *out, size_t out_len)
+{
+	int retval;
+	char *algo;
+	ssize_t expected_len;
+	uint8_t iv[AES_BLOCK_LENGTH];
+
+	if (!fsc || !in || !out)
+		return E_BADARGS;
+
+	if (fsc->algo.algo == ALGO_UNKNOWN ||
+		fsc->algo.keylen == KEYLEN_UNKNOWN ||
+		fsc->algo.mode == MODE_UNKNOWN)
+		return E_NOTINITIALIZED;
+
+	expected_len = crypto_get_expected_output_length(fsc, in_len);
+	if (expected_len < 0)
+		return expected_len;
+	if (expected_len > (ssize_t) out_len)
+		return E_NOMEM;
+
+	/* Generate a random IV of the same length as the AES block size */
+	if (get_random_bytes(iv, sizeof(iv)) < sizeof(iv))
+		return E_SYSCALL;
+
+	algo = crypto_get_algorithm_description(fsc, "<unknown>");
+	log_i(fsc->logger, "Encrypting a file of length %zu bytes (inline) (algo: %s)\n", in_len, algo);
+	mm_free(algo);
+
+	memcpy(out, iv, sizeof(iv));
+	out += sizeof(iv);
+	out_len -= sizeof(iv);
+
+	pthread_rwlock_rdlock(&fsc->rwlock);
+	retval = fsroot_run_challenges(fsc, in, in_len,
+			out + sizeof(iv), out_len,
+			iv, sizeof(iv),
+			encrypt_internal);
+	pthread_rwlock_unlock(&fsc->rwlock);
+
+	if (retval != S_OK)
+		log_e(fsc->logger, "Encryption failed (inline)\n");
+
+	return retval;
+}
+
 int crypto_decrypt_with_challenges(crypto_t *fsc,
 		const uint8_t *in, size_t in_len,
 		uint8_t **out, size_t *out_len)
@@ -315,6 +368,17 @@ int crypto_decrypt_with_challenges(crypto_t *fsc,
 	const uint8_t *iv = in;
 	size_t ivlen = AES_BLOCK_LENGTH;
 	uint8_t *plaintext_out;
+
+	if (!fsc || !in || !out || !out_len)
+		return E_BADARGS;
+	if (in_len <= ivlen)
+		return E_BADARGS;
+
+	/* Check the algorithm has been properly initialized */
+	if (fsc->algo.algo == ALGO_UNKNOWN ||
+		fsc->algo.keylen == KEYLEN_UNKNOWN ||
+		fsc->algo.mode == MODE_UNKNOWN)
+		return E_NOTINITIALIZED;
 
 	/* Ciphertext comes right after IV */
 	in += ivlen;
@@ -340,6 +404,49 @@ int crypto_decrypt_with_challenges(crypto_t *fsc,
 		*out_len = in_len;
 		*out = plaintext_out;
 	}
+
+	return retval;
+}
+
+int crypto_decrypt_with_challenges2(crypto_t *fsc,
+		const uint8_t *in, size_t in_len,
+		uint8_t *out, size_t out_len)
+{
+	int retval;
+	char *algo;
+	const uint8_t *iv = in;
+	size_t ivlen = AES_BLOCK_LENGTH;
+
+	if (!fsc || !in || !out)
+		return E_BADARGS;
+	if (in_len < ivlen)
+		return E_BADARGS;
+
+	/* Check the algorithm has been properly initialized */
+	if (fsc->algo.algo == ALGO_UNKNOWN ||
+		fsc->algo.keylen == KEYLEN_UNKNOWN ||
+		fsc->algo.mode == MODE_UNKNOWN)
+		return E_NOTINITIALIZED;
+
+	in += ivlen;
+	in_len -= ivlen;
+
+	if (out_len < in_len)
+		return E_NOMEM;
+
+	algo = crypto_get_algorithm_description(fsc, "<unknown>");
+	log_i(fsc->logger, "Decrypting a file of length %zu bytes (inline) (algo: %s)\n", in_len, algo);
+	mm_free(algo);
+
+	pthread_rwlock_rdlock(&fsc->rwlock);
+	retval = fsroot_run_challenges(fsc, in, in_len,
+			out, out_len,
+			iv, ivlen,
+			decrypt_internal);
+	pthread_rwlock_unlock(&fsc->rwlock);
+
+	if (retval != S_OK)
+		log_e(fsc->logger, "Decryption failed (inline)\n");
 
 	return retval;
 }

@@ -32,12 +32,21 @@ char *crypto_get_algorithm_description(crypto_t *, const char *);
 int crypto_load_challenge(crypto_t *, const char *);
 int crypto_unload_challenge(crypto_t *, const char *);
 
+ssize_t crypto_get_expected_output_length(crypto_t *, size_t);
+
 int crypto_encrypt_with_challenges(crypto_t *,
 		const uint8_t *, size_t,
 		uint8_t **, size_t *);
+int crypto_encrypt_with_challenges2(crypto_t *,
+		const uint8_t *, size_t,
+		uint8_t *, size_t);
+
 int crypto_decrypt_with_challenges(crypto_t *,
 		const uint8_t *, size_t,
 		uint8_t **, size_t *);
+int crypto_decrypt_with_challenges2(crypto_t *,
+		const uint8_t *, size_t,
+		uint8_t *, size_t);
 
 int crypto_load_challenges_from_config(crypto_t *, config_t *);
 void crypto_unload_all_challenges(crypto_t *);
