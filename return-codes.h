@@ -27,5 +27,6 @@
 #define E_NOTFOUND		-15
 #define E_NOTSTARTED		-16
 #define E_EMPTY			-17
+#define E_TOOLARGE		-18
 
 #endif

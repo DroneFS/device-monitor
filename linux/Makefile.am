@@ -18,3 +18,8 @@ libfsroot_la_LIBADD = ../chall/libchall.la
 lib_LTLIBRARIES += libdch.la
 libdch_la_SOURCES = dummy-challenge.c
 libdch_la_CFLAGS = $(CFLAGS)
+
+lib_LTLIBRARIES += libdch2.la
+libdch2_la_SOURCES = dummy-challenge-2.c
+libdch2_la_CFLAGS = $(CFLAGS)
+

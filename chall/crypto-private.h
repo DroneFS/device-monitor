@@ -32,6 +32,7 @@ struct crypto_st
 	struct {
 		unsigned int algo;
 		unsigned int keylen;
+		unsigned int keylen_bytes;
 		enum block_cipher_mode mode;
 	} algo;
 };

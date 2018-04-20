@@ -13,18 +13,6 @@
 #include "mm.h"
 #include "return-codes.h"
 
-static uint8_t *get_key_from_challenge(void *handle)
-{
-	uint8_t *key = NULL;
-	unsigned char * (* func_execute)(unsigned char **);
-
-	func_execute = dlsym(handle, "execute");
-	if (func_execute)
-		key = (uint8_t *) func_execute(NULL);
-
-	return key;
-}
-
 static size_t get_random_bytes(uint8_t *dst, size_t len)
 {
 	size_t read_bytes = 0;
@@ -73,37 +61,220 @@ static void memxor(uint8_t *dst, const uint8_t *src, size_t len)
 		dst[i] = src[i] ^ dst[i];
 }
 
-static int fsroot_run_challenges(crypto_t *fsc,
+static int fsroot_run_challenges_for_encryption(crypto_t *fsc,
+		file_formatter_t *fmt,
 		const uint8_t *in, size_t in_len,
-		uint8_t *out, size_t out_len,
 		const uint8_t *iv, size_t ivlen,
-		fsroot_cipher_func_t f)
+		uint8_t *out, size_t out_len)
 {
-	const size_t keylen = AES_KEY_LENGTH;
-	uint8_t key[keylen], *tmp_key = NULL;
+	void *ch;
+	int retval;
+	struct chall_ctx cctx;
+	const size_t keylen = fsc->algo.keylen_bytes;
+	uint8_t key[keylen];
 
-	/* Initialize key to zero */
 	memset(key, 0, keylen);
+	memset(&cctx, 0, sizeof(struct chall_ctx));
+
+	if (fmt->set_init_vector(fmt, iv, ivlen) != S_OK)
+		return CRYPTO_UNKNOWN_ERROR;
+
+	/* Generate the challenge context */
+	cctx.key_length = keylen;
+	cctx.key = mm_malloc0(keylen);
 
 	/* Walk over the list of challenges */
 	for (size_t i = 0; i < fsc->num_challenges; i++) {
 		if (fsc->challenges[i]) {
-			tmp_key = get_key_from_challenge(fsc->handles[i]);
-			if (!tmp_key) {
-				log_e(fsc->logger, "Could not get key from challenge %s\n",
+			retval = chall_run(fsc->handles[i], &cctx, ACTION_ENCRYPT);
+
+			if (retval != CRYPTO_OK) {
+				log_e(fsc->logger, "[ENCR] Could not get key from challenge %s\n",
 						fsc->challenges[i]);
+
+				mm_free(cctx.key);
+				cctx.key_length = 0;
+
 				return E_UNKNOWN;
 			}
 
-			/* key is a 128 bit (16 bytes) value */
-			memxor(key, tmp_key, keylen);
-			mm_free(tmp_key);
+			memxor(key, cctx.key, keylen);
+			memset(cctx.key, 0, keylen);
 
-			log_i(fsc->logger, "Got key from challenge %s\n", fsc->challenges[i]);
+			log_i(fsc->logger, "[ENCR] Got key from challenge %s\n", fsc->challenges[i]);
+
+			ch = fmt->challenge_start(fmt, fsc->challenges[i]);
+
+			/* Post the received parameters */
+			for (uint16_t pi = 0; pi < cctx.n_params; pi++) {
+				if (cctx.param_names[pi] && cctx.params[pi]) {
+					fmt->set_param(ch,
+							(const char *) cctx.param_names[pi],
+							(const char *) cctx.params[pi]);
+				}
+			}
+
+			fmt->challenge_end(fmt, ch);
 		}
 	}
 
-	return f(fsc, in, in_len, key, keylen, iv, ivlen, out, out_len);
+	/* Destroy the secret key so that consumers don't have access to it */
+	mm_free(cctx.key);
+	cctx.key_length = 0;
+
+	/* Free params and param names */
+	for (int i = 0; i < cctx.n_params; i++) {
+		mm_free(cctx.params[i]);
+		mm_free(cctx.param_names[i]);
+	}
+
+	mm_free(cctx.params);
+	mm_free(cctx.param_names);
+
+	return encrypt_internal(fsc, in, in_len, key, keylen, iv, ivlen, out, out_len);
+}
+
+static int chall_get_params(file_reader_t *r, void *ch, struct chall_ctx *cctx)
+{
+	int num_params;
+
+	cctx->n_params = 0;
+	cctx->params = NULL;
+	cctx->param_names = NULL;
+
+	num_params = r->get_num_params(ch);
+	if (num_params > 0) {
+		cctx->n_params = num_params;
+		cctx->params = mm_new(cctx->n_params, char *);
+		cctx->param_names = mm_new(cctx->n_params, char *);
+
+		for (unsigned i = 0; i < cctx->n_params; i++) {
+			if (r->get_param(ch, i,
+					&cctx->param_names[i],
+					&cctx->params[i]) != S_OK)
+				return CRYPTO_CHALL_ERROR;
+		}
+	}
+
+	return num_params >= 0 ? 0 : num_params;
+}
+
+static void chall_free_params(struct chall_ctx *cctx)
+{
+	for (int i = 0; i < cctx->n_params; i++) {
+		mm_free(cctx->params[i]);
+		mm_free(cctx->param_names[i]);
+	}
+
+	mm_free(cctx->params);
+	mm_free(cctx->param_names);
+	cctx->n_params = 0;
+}
+
+static int fsroot_run_challenges_for_decryption(crypto_t *fsc,
+		file_reader_t *r,
+		const uint8_t *in, size_t in_len,
+		uint8_t *out, size_t out_len)
+{
+	int retval;
+	void *ch;
+	struct chall_ctx cctx;
+	const size_t keylen = fsc->algo.keylen_bytes;
+	uint8_t key[keylen];
+	uint8_t *iv = NULL;
+	size_t ivlen = 0;
+	uint8_t *ciphertext = NULL;
+	size_t ciphertext_len = 0;
+
+	memset(key, 0, keylen);
+	memset(&cctx, 0, sizeof(struct chall_ctx));
+
+	/* Retrieve the IV, if any */
+	if (r->get_init_vector(r, &iv, &ivlen) != S_OK)
+		return CRYPTO_UNKNOWN_ERROR;
+
+	/* Retrieve the ciphertext */
+	if (r->get_ciphertext(r, &ciphertext, &ciphertext_len) != S_OK) {
+		mm_free(iv);
+		return CRYPTO_UNKNOWN_ERROR;
+	}
+
+	/* Generate the challenge context */
+	cctx.key_length = keylen;
+	cctx.key = mm_malloc0(keylen);
+
+	/* Walk over the list of challenges */
+	for (size_t i = 0; i < fsc->num_challenges; i++) {
+		if (fsc->challenges[i]) {
+			ch = r->challenge_start(r, fsc->challenges[i]);
+			if (!ch)
+				goto end;
+
+			/* Retrieve the challenge's params */
+			retval = chall_get_params(r, ch, &cctx);
+			if (retval != S_OK)
+				goto end;
+
+			retval = chall_run(fsc->handles[i], &cctx, ACTION_DECRYPT);
+			if (retval != CRYPTO_OK) {
+				log_e(fsc->logger, "[DECR] Could not get key from challenge %s\n",
+						fsc->challenges[i]);
+
+				retval = E_UNKNOWN;
+				goto end;
+			}
+
+			r->challenge_end(r, ch);
+
+			/* XOR and then reset the current key to zero */
+			memxor(key, cctx.key, keylen);
+			memset(cctx.key, 0, keylen);
+
+			/* Free params and param names */
+			chall_free_params(&cctx);
+
+			log_i(fsc->logger, "[DECR] Got key from challenge %s\n", fsc->challenges[i]);
+		}
+	}
+
+	retval = decrypt_internal(fsc, ciphertext, ciphertext_len, key, keylen, iv, ivlen, out, out_len);
+
+end:
+	mm_free(ciphertext);
+	mm_free(iv);
+
+	/* Destroy the secret key so that consumers don't have access to it */
+	mm_free(cctx.key);
+	cctx.key_length = 0;
+
+	/* Free params and param names */
+	chall_free_params(&cctx);
+
+	return retval;
+}
+
+static int fsroot_run_challenges(crypto_t *fsc,
+		const uint8_t *in, size_t in_len,
+		uint8_t *out, size_t out_len,
+		const uint8_t *iv, size_t ivlen,
+		void *f,
+		cipher_action_t action)
+{
+	if (fsc->num_challenges == 0)
+		return E_EMPTY;
+
+	if (action == ACTION_ENCRYPT) {
+		return fsroot_run_challenges_for_encryption(fsc, (file_formatter_t *) f,
+				in, in_len,
+				iv, ivlen,
+				out, out_len);
+	} else if (action == ACTION_DECRYPT) {
+		return fsroot_run_challenges_for_decryption(fsc, (file_reader_t *) f,
+				in, in_len,
+				out, out_len);
+	} else {
+		return CRYPTO_INVALID_ALGORITHM;
+	}
 }
 
 #define INITIAL_SLOTS 5
@@ -254,7 +425,7 @@ ssize_t crypto_get_expected_output_length(crypto_t *fsc, size_t in_len)
 	return AES_BLOCK_LENGTH + ciphertext_len;
 }
 
-int crypto_encrypt_with_challenges(crypto_t *fsc,
+int crypto_encrypt_with_challenges(crypto_t *fsc, file_formatter_t *fmt,
 	const uint8_t *in, size_t in_len,
 	uint8_t **out, size_t *out_len)
 {
@@ -265,7 +436,8 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 	ssize_t ciphertext_len;
 
 	if (!in || !in_len ||
-		!out || !out_len)
+		!out || !out_len ||
+		!fmt)
 		return E_BADARGS;
 
 	if (fsc->algo.algo == ALGO_UNKNOWN ||
@@ -284,7 +456,7 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 		return ciphertext_len;
 
 	/* We return a blob with the IV + the ciphertext */
-	ciphertext_out = mm_malloc0(sizeof(iv) + ciphertext_len);
+	ciphertext_out = mm_malloc0(ciphertext_len);
 
 	algo = crypto_get_algorithm_description(fsc, "<unknown>");
 	log_i(fsc->logger, "Encrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
@@ -292,25 +464,26 @@ int crypto_encrypt_with_challenges(crypto_t *fsc,
 
 	/* Run the challenges and generate the ciphertext */
 	pthread_rwlock_rdlock(&fsc->rwlock);
-	retval = fsroot_run_challenges(fsc, in, in_len,
-			ciphertext_out + sizeof(iv), ciphertext_len,
+	retval = fsroot_run_challenges(fsc,
+			in, in_len,
+			ciphertext_out, ciphertext_len,
 			iv, sizeof(iv),
-			encrypt_internal);
+			fmt,
+			ACTION_ENCRYPT);
 	pthread_rwlock_unlock(&fsc->rwlock);
 
 	if (retval != S_OK) {
 		mm_free(ciphertext_out);
 		log_e(fsc->logger, "Encryption failed\n");
 	} else {
-		memcpy(ciphertext_out, iv, sizeof(iv));
 		*out = ciphertext_out;
-		*out_len = sizeof(iv) + ciphertext_len;
+		*out_len = ciphertext_len;
 	}
 
 	return retval;
 }
 
-int crypto_encrypt_with_challenges2(crypto_t *fsc,
+int crypto_encrypt_with_challenges2(crypto_t *fsc, file_formatter_t *fmt,
 		const uint8_t *in, size_t in_len,
 		uint8_t *out, size_t out_len)
 {
@@ -319,7 +492,7 @@ int crypto_encrypt_with_challenges2(crypto_t *fsc,
 	ssize_t expected_len;
 	uint8_t iv[AES_BLOCK_LENGTH];
 
-	if (!fsc || !in || !out)
+	if (!fsc || !in || !out || !fmt)
 		return E_BADARGS;
 
 	if (fsc->algo.algo == ALGO_UNKNOWN ||
@@ -327,7 +500,7 @@ int crypto_encrypt_with_challenges2(crypto_t *fsc,
 		fsc->algo.mode == MODE_UNKNOWN)
 		return E_NOTINITIALIZED;
 
-	expected_len = crypto_get_expected_output_length(fsc, in_len);
+	expected_len = get_expected_ciphertext_length(fsc, in_len);
 	if (expected_len < 0)
 		return expected_len;
 	if (expected_len > (ssize_t) out_len)
@@ -341,85 +514,31 @@ int crypto_encrypt_with_challenges2(crypto_t *fsc,
 	log_i(fsc->logger, "Encrypting a file of length %zu bytes (inline) (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
-	memcpy(out, iv, sizeof(iv));
-	out += sizeof(iv);
-	out_len -= sizeof(iv);
-
 	pthread_rwlock_rdlock(&fsc->rwlock);
-	retval = fsroot_run_challenges(fsc, in, in_len,
-			out + sizeof(iv), out_len,
+	retval = fsroot_run_challenges(fsc,
+			in, in_len,
+			out, out_len,
 			iv, sizeof(iv),
-			encrypt_internal);
-	pthread_rwlock_unlock(&fsc->rwlock);
-
-	if (retval != S_OK)
-		log_e(fsc->logger, "Encryption failed (inline)\n");
-
-	return retval;
-}
-
-int crypto_decrypt_with_challenges(crypto_t *fsc,
-		const uint8_t *in, size_t in_len,
-		uint8_t **out, size_t *out_len)
-{
-	int retval;
-	char *algo;
-	/* IV comes first */
-	const uint8_t *iv = in;
-	size_t ivlen = AES_BLOCK_LENGTH;
-	uint8_t *plaintext_out;
-
-	if (!fsc || !in || !out || !out_len)
-		return E_BADARGS;
-	if (in_len <= ivlen)
-		return E_BADARGS;
-
-	/* Check the algorithm has been properly initialized */
-	if (fsc->algo.algo == ALGO_UNKNOWN ||
-		fsc->algo.keylen == KEYLEN_UNKNOWN ||
-		fsc->algo.mode == MODE_UNKNOWN)
-		return E_NOTINITIALIZED;
-
-	/* Ciphertext comes right after IV */
-	in += ivlen;
-	in_len -= ivlen;
-
-	algo = crypto_get_algorithm_description(fsc, "<unknown>");
-	log_i(fsc->logger, "Decrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
-	mm_free(algo);
-
-	plaintext_out = mm_malloc0(in_len);
-
-	pthread_rwlock_rdlock(&fsc->rwlock);
-	retval = fsroot_run_challenges(fsc, in, in_len,
-			plaintext_out, in_len,
-			iv, ivlen,
-			decrypt_internal);
+			fmt,
+			ACTION_ENCRYPT);
 	pthread_rwlock_unlock(&fsc->rwlock);
 
 	if (retval != S_OK) {
-		mm_free(plaintext_out);
-		log_e(fsc->logger, "Decryption failed\n");
-	} else {
-		*out_len = in_len;
-		*out = plaintext_out;
+		memset(out, 0, out_len);
+		log_e(fsc->logger, "Encryption failed (inline)\n");
 	}
 
 	return retval;
 }
 
-int crypto_decrypt_with_challenges2(crypto_t *fsc,
+int crypto_decrypt_with_challenges(crypto_t *fsc, file_reader_t *r,
 		const uint8_t *in, size_t in_len,
 		uint8_t *out, size_t out_len)
 {
 	int retval;
 	char *algo;
-	const uint8_t *iv = in;
-	size_t ivlen = AES_BLOCK_LENGTH;
 
-	if (!fsc || !in || !out)
-		return E_BADARGS;
-	if (in_len < ivlen)
+	if (!fsc || !in || !out || !out_len || !r)
 		return E_BADARGS;
 
 	/* Check the algorithm has been properly initialized */
@@ -428,25 +547,22 @@ int crypto_decrypt_with_challenges2(crypto_t *fsc,
 		fsc->algo.mode == MODE_UNKNOWN)
 		return E_NOTINITIALIZED;
 
-	in += ivlen;
-	in_len -= ivlen;
-
-	if (out_len < in_len)
-		return E_NOMEM;
-
 	algo = crypto_get_algorithm_description(fsc, "<unknown>");
-	log_i(fsc->logger, "Decrypting a file of length %zu bytes (inline) (algo: %s)\n", in_len, algo);
+	log_i(fsc->logger, "Decrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
 	pthread_rwlock_rdlock(&fsc->rwlock);
 	retval = fsroot_run_challenges(fsc, in, in_len,
 			out, out_len,
-			iv, ivlen,
-			decrypt_internal);
+			NULL, 0,
+			r,
+			ACTION_DECRYPT);
 	pthread_rwlock_unlock(&fsc->rwlock);
 
-	if (retval != S_OK)
-		log_e(fsc->logger, "Decryption failed (inline)\n");
+	if (retval != S_OK) {
+		memset(out, 0, out_len);
+		log_e(fsc->logger, "Decryption failed\n");
+	}
 
 	return retval;
 }

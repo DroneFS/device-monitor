@@ -20,6 +20,7 @@
 #include "fsroot.h"
 
 #include "chall/configuration.h"
+#include "chall/formatter-xml.h"
 #include "chall/crypto.h"
 #include "fsroot-internal.h"
 #include "fsroot-db.h"
@@ -99,6 +100,7 @@ static int fsroot_fullpath(const char *root_path, const char *in, char *out, siz
 
 static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int *error_out)
 {
+	file_reader_t *r = NULL;
 	off_t offset;
 	uint8_t *decrypted = NULL;
 	size_t decrypted_len = 0;
@@ -142,15 +144,35 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 		if (file->buf_len < offset)
 			goto error;
 
-		if (crypto_decrypt_with_challenges(fs->fs_crypto,
+		r = create_xml_reader(file->path);
+		if (!r)
+			goto error;
+
+		if (r->start_document(r, (const uint8_t *) file->buf, file->buf_len) != S_OK)
+			goto error;
+
+		decrypted_len = r->get_plaintext_length(r);
+		if (!decrypted_len)
+			goto error;
+
+		decrypted = mm_malloc0(decrypted_len);
+
+		if (crypto_decrypt_with_challenges(fs->fs_crypto, r,
 				(const uint8_t *) file->buf, (size_t) file->buf_len,
-				&decrypted, &decrypted_len) != S_OK)
+				decrypted, decrypted_len) != S_OK) {
+			destroy_xml_reader(r);
+			goto error;
+		}
+
+		if (r->end_document(r) != S_OK)
 			goto error;
 
 		/* Replace the original file contents with the decrypted contents */
 		mm_free(file->buf);
 		file->buf = (char *) decrypted;
 		file->buf_len = decrypted_len;
+
+		destroy_xml_reader(r);
 	} else {
 		log_i(fs->logger, "WARNING: No challenges were loaded. Data will be read as plaintext.\n");
 
@@ -163,8 +185,6 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 			file->buf = mm_realloc(file->buf, file->buf_len);
 		}
 	}
-
-
 
 end:
 	fclose(fp);
@@ -179,6 +199,7 @@ error:
 		fclose(fp);
 	if (error_out)
 		*error_out = errno;
+	destroy_xml_reader(r);
 	return -1;
 }
 
@@ -212,6 +233,7 @@ end:
 static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 {
 	int retval = S_OK, fd;
+	file_formatter_t *fmt = NULL;
 	uint8_t *encrypted = NULL;
 	size_t encrypted_len = 0;
 	ssize_t written;
@@ -232,14 +254,36 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 			return E_SYSCALL;
 	}
 
+	/* Create our file formatter, to save the output */
+	fmt = create_xml_formatter();
+	if (!fmt) {
+		retval = E_UNKNOWN;
+		goto end;
+	}
+
+	if (fmt->start_document(fmt) != S_OK) {
+		retval = E_SYSCALL;
+		goto end;
+	}
+
+	fmt->set_file_name(fmt, file->path);
+	fmt->set_version(fmt, 1);
+	fmt->set_plaintext_length(fmt, file->buf_len);
+
 	pthread_rwlock_rdlock(&file->rwlock);
 
 	if (crypto_num_challenges_loaded(fs->fs_crypto) > 0) {
 		retval = crypto_encrypt_with_challenges(
-			fs->fs_crypto,
+			fs->fs_crypto, fmt,
 			(const uint8_t *) file->buf, file->buf_len,
 			&encrypted, &encrypted_len);
-		written = write(fd, encrypted, encrypted_len);
+
+		if (retval != S_OK)
+			goto end;
+
+		retval = fmt->set_ciphertext(fmt, encrypted, encrypted_len);
+		if (retval != S_OK)
+			goto end;
 	} else {
 		log_i(fs->logger, "WARNING: No challenges were loaded. Data will be written as plaintext.\n");
 		written = write(fd, file->buf, file->buf_len);
@@ -247,15 +291,19 @@ static int fsroot_sync_file(fsroot_t *fs, struct fsroot_file *file)
 
 	pthread_rwlock_unlock(&file->rwlock);
 
+	written = fmt->end_document(fmt, fd);
+
 	fsync(fd);
 	close(fd);
 
 	mm_free(encrypted);
 	file->flags.is_synced = 1;
 
-	if (written == -1)
+	if (written < 0)
 		retval = E_SYSCALL;
+
 end:
+	destroy_xml_formatter(fmt);
 	return retval;
 }
 

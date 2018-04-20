@@ -37,4 +37,8 @@ int decrypt_internal(crypto_t *,
 
 void rnd_init_default(crypto_t *fsc);
 
+int chall_run(void *,
+		struct chall_ctx *,
+		cipher_action_t);
+
 #endif /* CRYPTO_INTERNAL_H_ */

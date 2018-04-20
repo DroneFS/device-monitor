@@ -1,10 +1,12 @@
 ACLOCAL_AMFLAGS = -I ../m4
 
 lib_LTLIBRARIES = libchall.la
-libchall_la_SOURCES = configuration.c configuration.h config-lua.c config-xml.c \
-											crypto-internal.h crypto-private.h \
-											crypto.c crypto.h crypto-algo.c \
-											../return-codes.h ../list.c ../list.h ../mm.c ../mm.h
+libchall_la_SOURCES = configuration.c configuration.h chall.c config-lua.c config-xml.c \
+	crypto-internal.h crypto-private.h \
+	crypto.c crypto.h crypto-algo.c \
+	formatter.h formatter-xml.c formatter-xml.h \
+	base64.c base64.h \
+	../return-codes.h ../list.c ../list.h ../mm.c ../mm.h
 libchall_la_CFLAGS = $(CFLAGS)
 libchall_la_LDFLAGS = $(LDFLAGS)
 

@@ -30,6 +30,8 @@ static int check_keylen(crypto_t *fsc, const char *start)
 	else
 		return CRYPTO_INVALID_KEY_LEN;
 
+	fsc->algo.keylen_bytes = fsc->algo.keylen / 8;
+
 	return 0;
 }
 

@@ -1,8 +1,9 @@
 <DroneFSConfig>
 	<CipherData>AES-128-CTR</CipherData>
 	<Challenges>
-		<count>1</count>
+		<count>2</count>
 		<Challenge name="libdch"></Challenge>
+		<Challenge name="libdch2"></Challenge>
 	</Challenges>
 </DroneFSConfig>
 
