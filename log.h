@@ -17,7 +17,7 @@ enum log_priorities {
 	LOG_DEBUG
 };
 
-typedef void (* logger_function_t) (logger_t *, enum log_priorities, const char *, ...);
+typedef void (* logger_function_t) (logger_t *, enum log_priorities, const char *, va_list args);
 
 void log_init(logger_t **);
 void log_deinit(logger_t **);
