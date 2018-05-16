@@ -10,16 +10,20 @@
 #include "crypto.h"
 #include "crypto-private.h"
 
-static int check_algo(crypto_t *fsc, const char *start)
+static const char *check_algo(crypto_t *fsc, const char *start)
 {
 	if (strncmp(start, "AES", 3))
-		return CRYPTO_INVALID_ALGORITHM;
+		return NULL;
+
+	start += 3;
+	if (*start++ != '-')
+		return NULL;
 
 	fsc->algo.algo = ALGO_AES;
-	return 0;
+	return start;
 }
 
-static int check_keylen(crypto_t *fsc, const char *start)
+static const char *check_keylen(crypto_t *fsc, const char *start)
 {
 	if (strncmp(start, "128", 3) == 0)
 		fsc->algo.keylen = 128;
@@ -28,69 +32,52 @@ static int check_keylen(crypto_t *fsc, const char *start)
 	else if (strncmp(start, "256", 3) == 0)
 		fsc->algo.keylen = 256;
 	else
-		return CRYPTO_INVALID_KEY_LEN;
+		return NULL;
+
+	start += 3;
+	if (*start++ != '-')
+		return NULL;
 
 	fsc->algo.keylen_bytes = fsc->algo.keylen / 8;
 
-	return 0;
+	return start;
 }
 
-static int check_mode(crypto_t *fsc, const char *start)
+static const char *check_mode(crypto_t *fsc, const char *start)
 {
 	if (strncmp(start, "CTR", 3) == 0)
 		fsc->algo.mode = MODE_CTR;
 	else if (strncmp(start, "CBC", 3) == 0)
 		fsc->algo.mode = MODE_CBC;
 	else
-		return CRYPTO_INVALID_MODE;
+		return NULL;
 
-	return 0;
+	return start;
 }
 
 int crypto_set_algorithm(crypto_t *fsc, const char *algo)
 {
-	int retval = 0;
-	char *pos = NULL;
+	int retval = CRYPTO_INVALID_ALGORITHM;
 	const char *start = algo;
-	enum states {
-		STATE_ALGO,
-		STATE_KEYLEN,
-		STATE_MODE
-	} state = STATE_ALGO;
 
-	while (strtok_r((char *) start, "-", &pos)) {
-		switch (state) {
-		case STATE_ALGO:
-			retval = check_algo(fsc, start);
-			if (retval)
-				goto end;
+	start = check_algo(fsc, start);
+	if (!start)
+		goto end;
 
-			start = pos;
-			state = STATE_KEYLEN;
-			break;
-		case STATE_KEYLEN:
-			retval = check_keylen(fsc, start);
-			if (retval)
-				goto end;
+	start = check_keylen(fsc, start);
+	if (!start)
+		goto end;
 
-			start = pos;
-			state = STATE_MODE;
-			break;
-		case STATE_MODE:
-			retval = check_mode(fsc, start);
-			if (retval)
-				goto end;
+	start = check_mode(fsc, start);
+	if (!start)
+		goto end;
 
-			goto check;
-			break;
-		}
-	}
-
-check:
 	if (fsc->algo.algo == ALGO_UNKNOWN ||
 			fsc->algo.keylen == KEYLEN_UNKNOWN ||
 			fsc->algo.mode == MODE_UNKNOWN)
 		return CRYPTO_INVALID_ALGORITHM;
+
+	retval = CRYPTO_OK;
 
 end:
 	return retval;

@@ -459,7 +459,7 @@ int crypto_encrypt_with_challenges(crypto_t *fsc, file_formatter_t *fmt,
 	ciphertext_out = mm_malloc0(ciphertext_len);
 
 	algo = crypto_get_algorithm_description(fsc, "<unknown>");
-	log_i(fsc->logger, "Encrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
+	log_i(fsc->logger, "Encrypting a file of length %d bytes (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
 	/* Run the challenges and generate the ciphertext */
@@ -511,7 +511,7 @@ int crypto_encrypt_with_challenges2(crypto_t *fsc, file_formatter_t *fmt,
 		return E_SYSCALL;
 
 	algo = crypto_get_algorithm_description(fsc, "<unknown>");
-	log_i(fsc->logger, "Encrypting a file of length %zu bytes (inline) (algo: %s)\n", in_len, algo);
+	log_i(fsc->logger, "Encrypting a file of length %d bytes (inline) (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
 	pthread_rwlock_rdlock(&fsc->rwlock);
@@ -548,7 +548,7 @@ int crypto_decrypt_with_challenges(crypto_t *fsc, file_reader_t *r,
 		return E_NOTINITIALIZED;
 
 	algo = crypto_get_algorithm_description(fsc, "<unknown>");
-	log_i(fsc->logger, "Decrypting a file of length %zu bytes (algo: %s)\n", in_len, algo);
+	log_i(fsc->logger, "Decrypting a file of length %d bytes (algo: %s)\n", in_len, algo);
 	mm_free(algo);
 
 	pthread_rwlock_rdlock(&fsc->rwlock);
