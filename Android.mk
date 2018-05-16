@@ -1,9 +1,11 @@
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := chall/crypto.c chall/crypto-openssl.c chall/config-xml.c chall/config-lua.c chall/configuration.c \
-	chall/crypto-algo.c \
-	log.c mm.c list.c
+LOCAL_SRC_FILES := chall/configuration.c chall/chall.c chall/config-lua.c chall/config-xml.c \
+	chall/crypto.c chall/crypto-algo.c chall/crypto-openssl.c \
+	chall/formatter-xml.c \
+	chall/base64.c \
+	log.c list.c mm.c
 LOCAL_MODULE := libchall
 LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror -DHAVE_LIBXML # -DANDROID
 LOCAL_SHARED_LIBRARIES := libcrypto libxml2 libicuuc libdl

@@ -207,7 +207,7 @@ static void set_plaintext_length(file_formatter_t *fmt, size_t length)
 	if (fmt && fmt->priv) {
 		priv = fmt->priv;
 		start_header(fmt);
-		snprintf(str_length, len, "%lu", length);
+		snprintf(str_length, len, "%zd", length);
 		xmlNewChild(priv->header_root, NULL, BAD_CAST "size", BAD_CAST str_length);
 	}
 }
@@ -668,7 +668,7 @@ void destroy_xml_formatter(file_formatter_t *fmt)
 	}
 }
 
-file_reader_t *create_xml_reader(const char *path)
+file_reader_t *create_xml_reader()
 {
 	file_reader_t *r = mm_new0(file_reader_t);
 

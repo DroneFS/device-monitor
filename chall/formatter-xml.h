@@ -13,7 +13,7 @@
 file_formatter_t *create_xml_formatter();
 void destroy_xml_formatter(file_formatter_t *);
 
-file_reader_t *create_xml_reader(const char *);
+file_reader_t *create_xml_reader();
 void destroy_xml_reader(file_reader_t *);
 
 #endif /* FORMATTER_XML_H_ */
