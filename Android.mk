@@ -8,7 +8,7 @@ LOCAL_SRC_FILES := chall/configuration.c chall/chall.c chall/config-lua.c chall/
 	log.c list.c mm.c
 LOCAL_MODULE := libchall
 LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror -DHAVE_LIBXML # -DANDROID
-LOCAL_SHARED_LIBRARIES := libcrypto libxml2 libicuuc libdl
+LOCAL_SHARED_LIBRARIES := libcrypto libxml2 libicuuc libdl libdch libdch2
 LOCAL_REQUIRED_MODULES := config.xml
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
 # Uncomment these for debugging:
@@ -22,6 +22,12 @@ LOCAL_MODULE := libdch
 LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror
 # LOCAL_CFLAGS += -ggdb
 # LOCAL_STRIP_MODULE := false
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := linux/dummy-challenge-2.c
+LOCAL_MODULE := libdch2
+LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
