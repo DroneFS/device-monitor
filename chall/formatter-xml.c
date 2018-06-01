@@ -506,7 +506,7 @@ static int get_ciphertext(file_reader_t *r, uint8_t **ct_out, size_t *ctlen_out)
 				goto error;
 
 			*ctlen_out = ctlen;
-			*ct_out = mm_new0(ctlen);
+			*ct_out = mm_malloc0(ctlen);
 
 			/* Decode Base64, and obtain the ciphertext back */
 			if (base64_decode((const char *) b64_ct, xmlStrlen(b64_ct), *ct_out) != BASE64_OK)
@@ -523,6 +523,8 @@ static int get_ciphertext(file_reader_t *r, uint8_t **ct_out, size_t *ctlen_out)
 error:
 	mm_free(*ct_out);
 	*ctlen_out = 0;
+	if (ctlen_str)
+		xmlFree(ctlen_str);
 	xmlFree(b64_ct);
 	return E_UNKNOWN;
 }
