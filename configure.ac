@@ -50,6 +50,9 @@ else
   AC_CHECK_LIB([crypto], [EVP_aes_128_cbc],
     [openssl_available=yes],
     [openssl_available=no])
+  AC_CHECK_LIB([crypto], [EVP_EncryptInit_ex],
+    [openssl_available=yes],
+    [openssl_available=no])
 fi
 if test "$use_libxml" == "yes"; then
   AC_CHECK_LIB([xml2], [xmlInitParser],
