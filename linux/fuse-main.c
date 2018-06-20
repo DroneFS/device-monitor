@@ -69,6 +69,7 @@ static struct m_fuse_ctx *__get_fsroot_ctx()
 
 static void *dm_fuse_init(struct fuse_conn_info *conn)
 {
+	int retval;
 	struct m_fuse_ctx *ctx = NULL;
 	fsroot_t *fsroot = NULL;
 	struct logger *logger = NULL;
@@ -80,32 +81,32 @@ static void *dm_fuse_init(struct fuse_conn_info *conn)
 
 	log_i(logger, "DroneFS device monitor. Written by Ander Juaristi.\n");
 
-	if (fsroot_init(&fsroot, logger) != S_OK) {
+	if ((retval = fsroot_init(&fsroot, logger)) != S_OK) {
 		fprintf(stderr, "ERROR: Could not initialize fsroot\n");
 		goto error;
 	}
 
-	if (fsroot_set_root_directory(fsroot, root_path) != S_OK) {
-		fprintf(stderr, "ERROR: Could not set root directory\n");
+	if ((retval = fsroot_set_root_directory(fsroot, root_path)) != S_OK) {
+		fprintf(stderr, "ERROR: Could not set root directory (%s)\n", error2str(retval));
 		goto error;
 	}
 
 	if (!config_file) {
 		fprintf(stderr, "WARNING: Config file not set\n");
-	} else if (fsroot_set_config_file(fsroot, config_file) != S_OK) {
-		fprintf(stderr, "ERROR: Could not set config file\n");
+	} else if ((retval = fsroot_set_config_file(fsroot, config_file)) != S_OK) {
+		fprintf(stderr, "ERROR: Could not set config file (%s)\n", error2str(retval));
 		goto error;
 	}
 
 	if (!database_file) {
 		fprintf(stderr, "WARNING: Database file not set\n");
-	} else if (fsroot_set_database_file(fsroot, database_file) != S_OK) {
-		fprintf(stderr, "ERROR: Could not set database file\n");
+	} else if ((retval = fsroot_set_database_file(fsroot, database_file)) != S_OK) {
+		fprintf(stderr, "ERROR: Could not set database file (%s)\n", error2str(retval));
 		goto error;
 	}
 
-	if (fsroot_start(fsroot, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754) != S_OK) {
-		fprintf(stderr, "ERROR: Could not start fsroot\n");
+	if ((retval = fsroot_start(fsroot, root_info.uid, root_info.gid, /* rwxr-xr-- */ 0040754)) != S_OK) {
+		fprintf(stderr, "ERROR: Could not start fsroot (%s)\n", error2str(retval));
 		goto error;
 	}
 

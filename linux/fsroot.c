@@ -1739,10 +1739,11 @@ int fsroot_start(fsroot_t *fs, uid_t root_uid, gid_t root_gid, mode_t root_mode)
 	 * than the root directory).
 	 */
 	if (fs->database_file) {
-		if (fsroot_db_create(fs->database_file) == E_EXISTS) {
+		if ((retval = fsroot_db_create(fs->database_file)) == E_EXISTS) {
 			if (fsroot_db_open(fs->database_file, &db) == S_OK) {
 				load_from_database(fs, db);
 				fsroot_db_close(&db);
+				retval = S_OK;
 			} else {
 				retval = E_NODB;
 			}
