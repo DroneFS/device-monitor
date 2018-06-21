@@ -103,7 +103,7 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 	file_reader_t *r = NULL;
 	off_t offset;
 	uint8_t *decrypted = NULL;
-	size_t decrypted_len = 0;
+	size_t decrypted_len = 0, buffer_len;
 
 	FILE *fp = fopen(file->path, "r");
 	if (fp == NULL)
@@ -155,13 +155,14 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 		if (!decrypted_len)
 			goto error;
 
-		decrypted = crypto_create_plaintext_buffer(fs->fs_crypto, decrypted_len);
+		buffer_len = decrypted_len;
+		decrypted = crypto_create_plaintext_buffer(fs->fs_crypto, &buffer_len);
 		if (!decrypted)
 			goto error;
 
 		if (crypto_decrypt_with_challenges(fs->fs_crypto, r,
 				(const uint8_t *) file->buf, (size_t) file->buf_len,
-				decrypted, decrypted_len) != S_OK) {
+				decrypted, buffer_len) != S_OK) {
 			destroy_xml_reader(r);
 			goto error;
 		}

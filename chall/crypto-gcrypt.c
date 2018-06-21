@@ -144,24 +144,24 @@ int decrypt_internal(crypto_t *fsc,
 	if (gcry_cipher_decrypt(ctx, out, out_len, in, in_len) != 0)
 		goto end;
 
-	if (fsc->algo.mode == MODE_CBC) {
-		/* Remove padding and update output length */
-		ptr = out + out_len - 1;
-		pad_len = *ptr;
-
-		/* FIXME padding should be removed in constant time */
-		while (ctr < pad_len) {
-			if ((*ptr) != pad_len)
-				goto end;
-			ptr--;
-			ctr++;
-		}
-	}
-
 	gcry_cipher_close(ctx);
 	return S_OK;
 
 end:
 	gcry_cipher_close(ctx);
 	return retval;
+}
+
+uint8_t *crypto_create_plaintext_buffer_internal(crypto_t *fsc, size_t *plaintext_length)
+{
+	size_t ct_len = *plaintext_length;
+
+	if (fsc->algo.mode == MODE_CBC)
+		ct_len += PADDING_LENGTH(ct_len);
+
+	if (ct_len == 0)
+		return NULL;
+
+	*plaintext_length = ct_len;
+	return mm_malloc0(ct_len);
 }

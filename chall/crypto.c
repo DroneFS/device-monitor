@@ -409,9 +409,9 @@ static ssize_t get_expected_ciphertext_length(crypto_t *fsc, size_t in_len)
 	return out_len;
 }
 
-uint8_t *crypto_create_plaintext_buffer(crypto_t *fsc, size_t plaintext_length)
+uint8_t *crypto_create_plaintext_buffer(crypto_t *fsc, size_t *plaintext_length)
 {
-	if (plaintext_length == 0)
+	if (!plaintext_length || *plaintext_length == 0)
 		return NULL;
 	return crypto_create_plaintext_buffer_internal(fsc, plaintext_length);
 }

@@ -173,9 +173,9 @@ int decrypt_internal(crypto_t *fsc,
 	return retval;
 }
 
-uint8_t *crypto_create_plaintext_buffer_internal(crypto_t *fsc, size_t plaintext_len)
+uint8_t *crypto_create_plaintext_buffer_internal(crypto_t *fsc, size_t *plaintext_len)
 {
-	size_t ct_len = plaintext_len;
+	size_t ct_len = *plaintext_len;
 
 	if (fsc->algo.mode == MODE_CBC)
 		ct_len += EVP_MAX_BLOCK_LENGTH;
@@ -183,5 +183,6 @@ uint8_t *crypto_create_plaintext_buffer_internal(crypto_t *fsc, size_t plaintext
 	if (ct_len == 0)
 		return NULL;
 
+	*plaintext_len = ct_len;
 	return mm_malloc0(ct_len);
 }

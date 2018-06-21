@@ -41,6 +41,6 @@ int chall_run(void *,
 		struct chall_ctx *,
 		cipher_action_t);
 
-uint8_t *crypto_create_plaintext_buffer_internal(crypto_t *, size_t);
+uint8_t *crypto_create_plaintext_buffer_internal(crypto_t *, size_t *);
 
 #endif /* CRYPTO_INTERNAL_H_ */
