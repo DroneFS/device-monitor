@@ -74,6 +74,8 @@ static const char *error2str(int err)
 		return "E_EMPTY";
 	case E_TOOLARGE:
 		return "E_TOOLARGE";
+	default:
+		return "<unknown>";
 	}
 }
 
