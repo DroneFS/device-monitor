@@ -155,7 +155,9 @@ static int fsroot_create_file_buffer(fsroot_t *fs, struct fsroot_file *file, int
 		if (!decrypted_len)
 			goto error;
 
-		decrypted = mm_malloc0(decrypted_len);
+		decrypted = crypto_create_plaintext_buffer(fs->fs_crypto, decrypted_len);
+		if (!decrypted)
+			goto error;
 
 		if (crypto_decrypt_with_challenges(fs->fs_crypto, r,
 				(const uint8_t *) file->buf, (size_t) file->buf_len,

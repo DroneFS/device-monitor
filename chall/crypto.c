@@ -409,20 +409,11 @@ static ssize_t get_expected_ciphertext_length(crypto_t *fsc, size_t in_len)
 	return out_len;
 }
 
-ssize_t crypto_get_expected_output_length(crypto_t *fsc, size_t in_len)
+uint8_t *crypto_create_plaintext_buffer(crypto_t *fsc, size_t plaintext_length)
 {
-	ssize_t ciphertext_len;
-
-	if (!fsc)
-		return E_BADARGS;
-
-	/* This returns the length of the ciphertext only (without the IV) */
-	ciphertext_len = get_expected_ciphertext_length(fsc, in_len);
-	if (ciphertext_len <= 0)
-		return ciphertext_len;
-
-	/* Currently all IVs we use have a fixed length of 16 bytes (an AES block) */
-	return AES_BLOCK_LENGTH + ciphertext_len;
+	if (plaintext_length == 0)
+		return NULL;
+	return crypto_create_plaintext_buffer_internal(fsc, plaintext_length);
 }
 
 int crypto_encrypt_with_challenges(crypto_t *fsc, file_formatter_t *fmt,

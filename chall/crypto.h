@@ -49,7 +49,7 @@ char *crypto_get_algorithm_description(crypto_t *, const char *);
 int crypto_load_challenge(crypto_t *, const char *);
 int crypto_unload_challenge(crypto_t *, const char *);
 
-ssize_t crypto_get_expected_output_length(crypto_t *, size_t);
+uint8_t *crypto_create_plaintext_buffer(crypto_t *, size_t);
 
 int crypto_encrypt_with_challenges(crypto_t *, file_formatter_t *,
 		const uint8_t *, size_t,
