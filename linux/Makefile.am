@@ -3,7 +3,7 @@
 ACLOCAL_AMFLAGS = -I ../m4
 
 bin_PROGRAMS = fuse-main
-fuse_main_SOURCES = fuse-main.c
+fuse_main_SOURCES = fuse-main.c ../return-codes.c
 fuse_main_CFLAGS = $(FUSE_CFLAGS) $(CFLAGS)
 fuse_main_LDFLAGS = $(FUSE_LIBS)
 fuse_main_LDADD = libfsroot.la
