@@ -10,6 +10,8 @@ LOCAL_MODULE := libchall
 LOCAL_CFLAGS := -Wall -Wno-unused-parameter -Werror -DHAVE_LIBXML # -DANDROID
 LOCAL_SHARED_LIBRARIES := libcrypto libxml2 libicuuc libdl libdch libdch2
 LOCAL_REQUIRED_MODULES := config.xml
+LOCAL_C_INCLUDES := external/libxml2/include
+INCLUDES := external/libxml2/include
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)
 # Uncomment these for debugging:
 # LOCAL_CFLAGS += -ggdb
