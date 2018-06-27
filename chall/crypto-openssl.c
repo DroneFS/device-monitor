@@ -28,7 +28,7 @@ static int AES_CBC_encrypt(const uint8_t *in, size_t in_len,
 		goto end;
 	if (!EVP_EncryptUpdate(ctx, out, &outlen, in, in_len))
 		goto end;
-	if (!EVP_EncryptFinal(ctx, out + outlen, &outlen))
+	if (!EVP_EncryptFinal_ex(ctx, out + outlen, &outlen))
 		goto end;
 
 	retval = CRYPTO_OK;
@@ -55,7 +55,7 @@ static int AES_CTR_encrypt(const uint8_t *in, size_t in_len,
 		goto end;
 	if (!EVP_EncryptUpdate(ctx, out, &outlen, in, in_len))
 		goto end;
-	if (!EVP_EncryptFinal(ctx, out + outlen, &outlen))
+	if (!EVP_EncryptFinal_ex(ctx, out + outlen, &outlen))
 		goto end;
 
 	retval = CRYPTO_OK;
@@ -118,7 +118,7 @@ static int AES_CBC_decrypt(const uint8_t *in, size_t in_len,
 		goto end;
 	if (!EVP_DecryptUpdate(ctx, out, &outlen, in, in_len))
 		goto end;
-	if (!EVP_DecryptFinal(ctx, out + outlen, &outlen))
+	if (!EVP_DecryptFinal_ex(ctx, out + outlen, &outlen))
 		goto end;
 
 	retval = CRYPTO_OK;
