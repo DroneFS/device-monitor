@@ -36,7 +36,7 @@ PUCHAR *executeParam()
 
     int vel0 = 0;
     int cuanto = 1;
-    resul = (resul-vel0)/cuanto
+    resul = (resul-vel0)/cuanto;
 
 	params = malloc(sizeof(unsigned char *) * 2);
 	if (!params)
@@ -73,7 +73,7 @@ PUCHAR execute(PUCHAR *paramsXml)
 
     int vel0 = 0;
     int cuanto = 1;
-    resul = (resul-vel0)/2
+    resul = (resul-vel0)/cuanto;
 
 	/* Devolvemos una cadena de 128 bits (16 bytes) de todo ceros */
 	key = malloc(keylen);

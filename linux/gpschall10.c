@@ -10,6 +10,49 @@
 
 typedef unsigned char *PUCHAR;
 
+float damepos(char* val) {
+    int rc;
+    //struct timeval tv;
+
+    struct gps_data_t gps_data;
+    if ((rc = gps_open("localhost", "2947", &gps_data)) == -1) {
+        //printf("code: %d, reason: %s\n", rc, gps_errstr(rc));
+        return EXIT_FAILURE;
+    }
+    gps_stream(&gps_data, WATCH_ENABLE | WATCH_JSON, NULL);
+
+    while (1) {
+        /* wait for 2 seconds to receive data */
+        if (gps_waiting (&gps_data, 2000000)) {
+            /* read data */
+            if ((rc = gps_read(&gps_data)) == -1) {
+                //printf("error occured reading gps data. code: %d, reason: %s\n", rc, gps_errstr(rc));
+            } else {
+                /* Display data from the GPS receiver. */
+                if ((gps_data.status == STATUS_FIX) && 
+                    (gps_data.fix.mode == MODE_2D || gps_data.fix.mode == MODE_3D) &&
+                    !isnan(gps_data.fix.latitude) && 
+                    !isnan(gps_data.fix.longitude)) {
+                        //gettimeofday(&tv, NULL); EDIT: tv.tv_sec isn't actually the timestamp!
+                        //printf("latitude: %f, longitude: %f, speed: %f, timestamp: %lf\n", gps_data.fix.latitude, gps_data.fix.longitude, gps_data.fix.speed, gps_data.fix.time); //EDIT: Replaced tv.tv_sec with gps_data.fix.time
+                } else {
+                    //printf("no GPS data available\n");
+                }
+            }
+        }
+
+        sleep(3);
+    }
+
+    /* When you are done... */
+    gps_stream(&gps_data, WATCH_DISABLE, NULL);
+    gps_close (&gps_data);
+
+    //return EXIT_SUCCESS;
+    if (strcmp(val,"lat")==0){return gps_data.fix.latitude;}
+    else {return gps_data.fix.longitude;}
+}
+
 int getNParams()
 {
 	return N_PARAMS;
@@ -68,7 +111,7 @@ PUCHAR *executeParam()
         const char* val1 = strtok(line, ";");
         const char* val2 = strtok(NULL, ";");
 
-        printf("%s y %s\n", val1, val2);
+        //printf("%s y %s\n", val1, val2);
         lat = atof(val1);
         lon = atof(val2);
         //tengo q apuntar las esquinas en este bucle
@@ -138,8 +181,8 @@ PUCHAR *executeParam()
 
 PUCHAR execute(PUCHAR *paramsXml)
 {
-	double lat;
-    double lon;
+	//double lat;
+    //double lon;
     double lat_min = 90;
     double lat_max = -90;
     double lon_min = 180;
@@ -147,6 +190,11 @@ PUCHAR execute(PUCHAR *paramsXml)
 
 	unsigned char *key;
 	const size_t keylen = 16;
+    
+    //char params[4];
+    int i = 0;
+    int j = 0;
+    int numtesela;
 
 	if (!paramsXml)
 		return NULL;
@@ -171,25 +219,32 @@ PUCHAR execute(PUCHAR *paramsXml)
 			memcpy(key + keylen - 3, paramsXml[i], 3);*/
 		//paramsxml son los parametros de codigo 0 y 1 en este caso
 		//TODO: Calcular tesela con los dos parametros y meterla en la clave
-		if (i == 0)
+        char* valor;
+		if (i == 0){
 			//memcpy(key, paramsXml[i], 3);
-			lat_max = paramsXml[i];
-		else if (i == 1)
+            //params[1] = (unsigned char *) strdup(value);
+            valor = strdup(paramsXml[i]);
+			lat_max = atof(valor);}
+		else if (i == 1){
 			//memcpy(key + keylen - 3, paramsXml[i], 3);
-			lat_min = paramsXml[i];
-		else if (i == 2)
+            valor = strdup(paramsXml[i]);
+			lat_min = atof(valor);}
+		else if (i == 2){
 			//memcpy(key + keylen - 3, paramsXml[i], 3);
-			lon_max = paramsXml[i];
-		else if (i == 3)
+            valor = strdup(paramsXml[i]);
+			lon_max = atof(valor);}
+		else if (i == 3){
 			//memcpy(key + keylen - 3, paramsXml[i], 3);
-			lon_min = paramsXml[i];
+            valor = strdup(paramsXml[i]);
+			lon_min = atof(valor);}
 	/*calculate tesela*/
 	}
-	double ancho = lat_max0 - lat_min0;
-    double alto =  lon_max0-lon_min0;
+    
+	double ancho = lat_max - lat_min;
+    double alto =  lon_max-lon_min;
     //punto actual: 40.4550000000 ; 3,6160000000
-    double latpunto = damepos("lat");
-    double lonpunto =  damepos("lon");
+    double latpunto = 40.4550000000 ;//damepos("lat");
+    double lonpunto =  3.6160000000;//damepos("lon");
     //distancia de tesela 0
     i = 0;
     j = 0;
@@ -212,45 +267,3 @@ PUCHAR execute(PUCHAR *paramsXml)
 	return key;
 }
 
-float damepos(val) {
-int rc;
-struct timeval tv;
-
-struct gps_data_t gps_data;
-if ((rc = gps_open("localhost", "2947", &gps_data)) == -1) {
-    //printf("code: %d, reason: %s\n", rc, gps_errstr(rc));
-    return EXIT_FAILURE;
-}
-gps_stream(&gps_data, WATCH_ENABLE | WATCH_JSON, NULL);
-
-while (1) {
-    /* wait for 2 seconds to receive data */
-    if (gps_waiting (&gps_data, 2000000)) {
-        /* read data */
-        if ((rc = gps_read(&gps_data)) == -1) {
-            //printf("error occured reading gps data. code: %d, reason: %s\n", rc, gps_errstr(rc));
-        } else {
-            /* Display data from the GPS receiver. */
-            if ((gps_data.status == STATUS_FIX) && 
-                (gps_data.fix.mode == MODE_2D || gps_data.fix.mode == MODE_3D) &&
-                !isnan(gps_data.fix.latitude) && 
-                !isnan(gps_data.fix.longitude)) {
-                    //gettimeofday(&tv, NULL); EDIT: tv.tv_sec isn't actually the timestamp!
-                    //printf("latitude: %f, longitude: %f, speed: %f, timestamp: %lf\n", gps_data.fix.latitude, gps_data.fix.longitude, gps_data.fix.speed, gps_data.fix.time); //EDIT: Replaced tv.tv_sec with gps_data.fix.time
-            } else {
-                //printf("no GPS data available\n");
-            }
-        }
-    }
-
-    sleep(3);
-}
-
-/* When you are done... */
-gps_stream(&gps_data, WATCH_DISABLE, NULL);
-gps_close (&gps_data);
-
-//return EXIT_SUCCESS;
-if (val=="lat"){return gps_data.fix.latitude;}
-else {return gps_data.fix.longitude;}
-}
